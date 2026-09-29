@@ -1446,9 +1446,18 @@ Panel {
           font.pixelSize: Style.font.caption
         }
 
+        // The dot is punctuation, not part of the link.
+        Text {
+          visible: root.needsSignIn(head.account)
+          text: "·"
+          color: root.dim
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+        }
+
         TextLink {
           visible: root.needsSignIn(head.account)
-          text: "· Sign-in required"
+          text: "Sign-in required"
           idleColor: root.urgent
           tooltip: "Sign in to this account again"
           onClicked: root.signInAgain(head.owner, head.account)
