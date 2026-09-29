@@ -237,7 +237,7 @@ Item {
     return numberValue(p.totalPrompts) > 0 || numberValue(p.totalSessions) > 0
       || numberValue(p.activeDays) > 0 || numberValue(p.todayPrompts) > 0
       || numberValue(p.todaySessions) > 0 || (p.limits && p.limits.length > 0)
-      || !!p.balance
+      || (p.accounts && p.accounts.length > 0) || !!p.balance
   }
 
   // A prepaid agent's credit ledger. Like rate limits, the balance is

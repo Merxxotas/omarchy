@@ -119,7 +119,10 @@ Panel {
     addStatus = "Starting…"
     addCode = ""
     addUrl = ""
-    addNeedsPaste = false
+    // Claude's login offers pasting a code back whenever its page shows one,
+    // and its prompt for it has no newline to read it by, so the field is
+    // there from the start.
+    addNeedsPaste = addProvider === "claude"
     addResult = ""
     addStage = "running"
     addProcess.command = ["omarchy-agent-account-add", "--events", addProvider].concat(label !== "" ? [label] : [])
@@ -139,7 +142,6 @@ Panel {
   function submitPaste(code) {
     if (!addProcess.running || code.trim() === "") return
     addProcess.write(code.trim() + "\n")
-    addNeedsPaste = false
     addStatus = "Checking the code…"
   }
 
@@ -268,7 +270,10 @@ Panel {
     addStatus = "Starting…"
     addCode = ""
     addUrl = ""
-    addNeedsPaste = false
+    // Claude's login offers pasting a code back whenever its page shows one,
+    // and its prompt for it has no newline to read it by, so the field is
+    // there from the start.
+    addNeedsPaste = addProvider === "claude"
     addResult = ""
     addStage = "running"
     addProcess.command = ["omarchy-agent-account-add", "--events", "--reauth",
