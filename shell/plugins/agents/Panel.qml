@@ -68,9 +68,129 @@ Panel {
     usage.refreshAll(true)
   }
 
+  // ------------------------------------------------------------ adding
+  //
+  // Adding a subscription happens right here: pick a provider, name it if
+  // it's a second account, then sign in through the browser while the panel
+  // follows omarchy-agent-account-add --events. The browser taking focus may
+  // close the panel; the login carries on, and its result arrives as a
+  // notification too.
+
+  readonly property var addProviders: [
+    { providerId: "claude", providerName: "Claude Code" },
+    { providerId: "codex", providerName: "Codex" },
+    { providerId: "grok", providerName: "Grok" }
+  ]
+  property string addStage: ""
+  property string addProvider: ""
+  property var addChecks: ({})
+  property string addStatus: ""
+  property string addCode: ""
+  property string addUrl: ""
+  property bool addNeedsPaste: false
+  property string addResult: ""
+
+  function addProviderName(id) {
+    for (var i = 0; i < addProviders.length; i++)
+      if (addProviders[i].providerId === id) return addProviders[i].providerName
+    return id
+  }
+
   function addAccount() {
-    root.close()
-    Util.execArgv(["omarchy-menu", "summon", "setup.accounts.add"])
+    if (addStage === "running") return
+    addStage = "pick"
+    addChecks = ({})
+    if (!checkProcess.running) checkProcess.running = true
+  }
+
+  function chooseAddProvider(id) {
+    var state = addChecks[id] || ""
+    if (state === "unsupported" || state === "") return
+    addProvider = id
+    if (state === "additional") addStage = "name"
+    else startAdd("")
+  }
+
+  function startAdd(label) {
+    addStatus = "Starting…"
+    addCode = ""
+    addUrl = ""
+    addNeedsPaste = false
+    addResult = ""
+    addStage = "running"
+    addProcess.command = ["omarchy-agent-account-add", "--events", addProvider].concat(label !== "" ? [label] : [])
+    addProcess.running = true
+  }
+
+  function cancelAdd() {
+    if (addProcess.running) addProcess.signal(15)
+    addStage = ""
+    root.focusKeys()
+  }
+
+  function submitPaste(code) {
+    if (!addProcess.running || code.trim() === "") return
+    addProcess.write(code.trim() + "\n")
+    addNeedsPaste = false
+    addStatus = "Checking the code…"
+  }
+
+  // The add command's own lines are tagged; everything else is the CLI
+  // talking, and only two things in it matter here: a code to confirm in the
+  // browser (Grok), and an invitation to paste one back (Claude).
+  function handleAddLine(line) {
+    var text = String(line).replace(/\u001b\[[0-9;]*m/g, "")
+    var tagged = text.match(/^@@omarchy (status|done|error) (.*)$/)
+    if (tagged) {
+      if (tagged[1] === "status") {
+        addStatus = tagged[2]
+      } else {
+        addResult = tagged[2]
+        addStage = tagged[1]
+        if (tagged[1] === "done") {
+          usage.refreshLimits()
+          addDoneTimer.restart()
+        }
+      }
+      return
+    }
+    var code = text.match(/^\s*([A-Z0-9]{4}-[A-Z0-9]{4})\s*$/)
+    if (code) addCode = code[1]
+    if (/paste code/i.test(text)) addNeedsPaste = true
+    var url = text.match(/(https:\/\/\S+)/)
+    if (url && addUrl === "") addUrl = url[1]
+  }
+
+  function reopenSignIn() {
+    if (addUrl === "") return
+    var additional = (addChecks[addProvider] || "") === "additional"
+    Util.execArgv(additional ? ["omarchy-launch-browser", "--private", addUrl] : ["omarchy-launch-browser", addUrl])
+  }
+
+  // ------------------------------------------------------- default agent
+
+  readonly property var agentOptions: [
+    { value: "claude", label: "Claude Code" },
+    { value: "codex", label: "Codex" },
+    { value: "grok", label: "Grok" },
+    { value: "agy", label: "Antigravity" },
+    { value: "crush", label: "Crush" },
+    { value: "cursor-agent", label: "Cursor CLI" },
+    { value: "copilot", label: "GitHub Copilot" },
+    { value: "hermes", label: "Hermes" },
+    { value: "muse", label: "Muse Code" },
+    { value: "omp", label: "Oh My Pi" },
+    { value: "openclaw", label: "OpenClaw" },
+    { value: "opencode", label: "OpenCode" },
+    { value: "ori", label: "Ori" },
+    { value: "pi", label: "Pi" }
+  ]
+  property string defaultAgent: ""
+
+  function setDefaultAgent(agent) {
+    if (agent === "" || agent === defaultAgent) return
+    defaultAgent = agent
+    Util.execArgv(["omarchy-default-agent", "--no-launch", agent])
   }
 
   function renameAccount(p, account, label) {
@@ -411,6 +531,8 @@ Panel {
   onOpenedChanged: if (opened) {
     cursorActive = false
     accountCursor = -1
+    if (addStage !== "running") addStage = ""
+    if (!defaultAgentProcess.running) defaultAgentProcess.running = true
     nowMs = Date.now()
     if (panelFlick) panelFlick.contentY = 0
     usage.refreshLimits()
@@ -420,6 +542,50 @@ Panel {
   Main {
     id: usage
     settings: root.settings
+  }
+
+  Process {
+    id: checkProcess
+    running: false
+    command: ["omarchy-agent-account-add", "--check"]
+    stdout: SplitParser {
+      onRead: function(line) {
+        var parts = String(line).trim().split(" ")
+        if (parts.length !== 2) return
+        var checks = Object.assign({}, root.addChecks)
+        checks[parts[0]] = parts[1]
+        root.addChecks = checks
+      }
+    }
+  }
+
+  Process {
+    id: addProcess
+    running: false
+    stdinEnabled: true
+    stdout: SplitParser { onRead: function(line) { root.handleAddLine(line) } }
+    onExited: {
+      if (root.addStage === "running") {
+        root.addResult = "The sign-in didn't finish."
+        root.addStage = "error"
+      }
+    }
+  }
+
+  Timer {
+    id: addDoneTimer
+    interval: 2500
+    onTriggered: if (root.addStage === "done") root.addStage = ""
+  }
+
+  Process {
+    id: defaultAgentProcess
+    running: false
+    command: ["omarchy-default-agent"]
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: root.defaultAgent = text.trim()
+    }
   }
 
   // Cheap enough to keep running: it only re-evaluates text bindings, and a
@@ -496,13 +662,16 @@ Panel {
                                            Math.max(0, panelFlick.contentHeight - panelFlick.height))
       }
       onActivateRequested: root.activateSelection()
-      onCloseRequested: root.close()
+      onCloseRequested: {
+        if (root.addStage !== "") root.cancelAdd()
+        else root.close()
+      }
       onTabRequested: function(direction) { root.switchPanel(direction) }
       onTextKey: function(t) {
         if (t === "r" || t === "R") root.refreshNow()
         else if (t === "a" || t === "A") root.addAccount()
         else if (t === "m" || t === "M") root.toggleSwitchMode()
-        else if (t >= "1" && t <= "9" && Number(t) <= root.accountEntries.length) root.accountCursor = Number(t) - 1
+        else if (root.addStage === "" && t >= "1" && t <= "9" && Number(t) <= root.accountEntries.length) root.accountCursor = Number(t) - 1
       }
 
       Flickable {
@@ -546,11 +715,14 @@ Panel {
             }
 
             trailingControl: Component {
-              TextLink {
-                text: "+"
-                font.pixelSize: Style.font.heading
-                tooltip: "Add a subscription"
-                onClicked: root.addAccount()
+              PanelActionButton {
+                iconText: root.addStage === "" ? "󰐕" : "󰅖"
+                tooltipText: root.addStage === "" ? "Add a subscription" : "Back to the limits"
+                bordered: true
+                foreground: Color.accent
+                fontFamily: root.fontFamily
+                fontSize: Style.font.heading
+                onClicked: root.addStage === "" ? root.addAccount() : root.cancelAdd()
               }
             }
           }
@@ -567,13 +739,51 @@ Panel {
             wrapMode: Text.WordWrap
           }
 
+          AddView {
+            visible: root.addStage !== ""
+            width: column.width
+          }
+
           Repeater {
-            model: root.providers
+            model: root.addStage === "" ? root.providers : []
 
             ProviderSection {
               required property var modelData
               width: column.width
               provider: modelData
+            }
+          }
+
+          // ---------- Default agent ----------
+          PanelSeparator {
+            visible: root.addStage === ""
+            foreground: root.foreground
+          }
+
+          Item {
+            visible: root.addStage === ""
+            width: parent.width
+            implicitHeight: agentPicker.implicitHeight
+
+            Text {
+              anchors.left: parent.left
+              anchors.verticalCenter: parent.verticalCenter
+              text: "Default agent"
+              color: root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.bodySmall
+            }
+
+            Dropdown {
+              id: agentPicker
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
+              width: Style.space(170)
+              showLabel: false
+              fontFamily: root.fontFamily
+              options: root.agentOptions
+              value: root.defaultAgent
+              onChanged: function(v) { root.setDefaultAgent(v) }
             }
           }
 
@@ -591,6 +801,209 @@ Panel {
           }
         }
       }
+    }
+  }
+
+  // Adding a subscription, in place of the list: pick, name, sign in.
+  component AddView: Column {
+    id: add
+    spacing: Style.space(14)
+
+    PanelSeparator { foreground: root.foreground }
+
+    Item {
+      width: parent.width
+      implicitHeight: addTitle.implicitHeight
+
+      Text {
+        id: addTitle
+        anchors.left: parent.left
+        anchors.verticalCenter: parent.verticalCenter
+        text: root.addStage === "pick" ? "Add a subscription" : root.addProviderName(root.addProvider)
+        color: root.foreground
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.body
+        font.bold: true
+      }
+
+      TextLink {
+        anchors.right: parent.right
+        anchors.verticalCenter: parent.verticalCenter
+        visible: root.addStage !== "done"
+        text: root.addStage === "running" ? "Cancel" : "Back"
+        onClicked: root.cancelAdd()
+      }
+    }
+
+    // Pick: each provider, and what adding it now would mean.
+    Repeater {
+      model: root.addStage === "pick" ? root.addProviders : []
+
+      Item {
+        id: choice
+        required property var modelData
+        readonly property string state: root.addChecks[modelData.providerId] || ""
+        readonly property bool available: state === "first" || state === "additional"
+        width: add.width
+        implicitHeight: Math.max(choiceIcon.height, choiceText.implicitHeight) + Style.space(8)
+        opacity: available || state === "" ? 1.0 : 0.5
+
+        ProviderIcon {
+          id: choiceIcon
+          anchors.left: parent.left
+          anchors.verticalCenter: parent.verticalCenter
+          provider: choice.modelData
+        }
+
+        Column {
+          id: choiceText
+          anchors.left: choiceIcon.right
+          anchors.leftMargin: Style.space(12)
+          anchors.right: parent.right
+          anchors.verticalCenter: parent.verticalCenter
+          spacing: Style.space(2)
+
+          Text {
+            text: choice.modelData.providerName
+            color: choiceMouse.containsMouse && choice.available ? Color.accent : root.foreground
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.body
+          }
+
+          Text {
+            text: choice.state === "first" ? "Sign in"
+              : choice.state === "additional" ? "Add another account"
+              : choice.state === "unsupported" ? "Already signed in; a second account isn't supported yet"
+              : "Checking…"
+            color: root.dim
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
+          }
+        }
+
+        MouseArea {
+          id: choiceMouse
+          anchors.fill: parent
+          hoverEnabled: true
+          cursorShape: choice.available ? Qt.PointingHandCursor : Qt.ArrowCursor
+          onClicked: root.chooseAddProvider(choice.modelData.providerId)
+        }
+      }
+    }
+
+    // Name: a second account needs telling apart from the first.
+    Column {
+      visible: root.addStage === "name"
+      width: parent.width
+      spacing: Style.space(10)
+
+      Text {
+        width: parent.width
+        text: "Name this account. It signs in through a private window, so your browser's current account isn't picked up."
+        color: root.dim
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.caption
+        wrapMode: Text.WordWrap
+      }
+
+      TextField {
+        id: addNameField
+        width: parent.width
+        placeholderText: "Work"
+        foreground: root.foreground
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.body
+        onVisibleChanged: if (visible) { text = ""; forceActiveFocus() }
+        onAccepted: root.startAdd(text.trim())
+        Keys.onEscapePressed: function(event) { root.cancelAdd(); event.accepted = true }
+      }
+
+      TextLink {
+        text: "Sign in"
+        font.pixelSize: Style.font.bodySmall
+        onClicked: root.startAdd(addNameField.text.trim())
+      }
+    }
+
+    // Running: what's happening, and whatever the sign-in needs from you.
+    Column {
+      visible: root.addStage === "running"
+      width: parent.width
+      spacing: Style.space(12)
+
+      Text {
+        width: parent.width
+        text: root.addStatus
+        color: root.foreground
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.bodySmall
+        wrapMode: Text.WordWrap
+      }
+
+      Column {
+        visible: root.addCode !== ""
+        width: parent.width
+        spacing: Style.space(4)
+
+        Text {
+          text: "Confirm this code in your browser"
+          color: root.dim
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+        }
+
+        Text {
+          text: root.addCode
+          color: Color.accent
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.display
+          font.bold: true
+          font.letterSpacing: 2
+        }
+      }
+
+      Column {
+        visible: root.addNeedsPaste
+        width: parent.width
+        spacing: Style.space(6)
+
+        Text {
+          width: parent.width
+          text: "If the page shows a code instead of finishing, paste it here."
+          color: root.dim
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          wrapMode: Text.WordWrap
+        }
+
+        TextField {
+          id: pasteField
+          width: parent.width
+          placeholderText: "Code"
+          foreground: root.foreground
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.body
+          onAccepted: { root.submitPaste(text); text = "" }
+          Keys.onEscapePressed: function(event) { root.cancelAdd(); event.accepted = true }
+        }
+      }
+
+      TextLink {
+        visible: root.addUrl !== ""
+        text: "Open the sign-in page again"
+        onClicked: root.reopenSignIn()
+      }
+    }
+
+    // Done or failed.
+    Text {
+      visible: root.addStage === "done" || root.addStage === "error"
+      width: parent.width
+      text: root.addResult
+      color: root.addStage === "error" ? root.urgent : root.foreground
+      font.family: root.fontFamily
+      font.pixelSize: Style.font.bodySmall
+      wrapMode: Text.WordWrap
     }
   }
 

@@ -13,9 +13,8 @@ Every subscription on one page, limits first.
 
 - **Hero** — the agents robot, and a line that rotates through what the
   token counts add up to across every agent: tokens this week and today, the
-  most used model, the busiest day, and today's prompts and sessions. A + on
-  the right opens _Setup > Agent Accounts > Add Account_ to add a Claude,
-  Codex, or Grok subscription.
+  most used model, the busiest day, and today's prompts and sessions. The +
+  on the right adds a subscription (below).
 - **One section per agent** — its mark, name, and plan, then a compact line
   per limit window: its meter, the percentage used, and the time until it
   resets. A model-scoped allowance on the same clock (Claude's Fable weekly
@@ -32,6 +31,18 @@ Every subscription on one page, limits first.
 - **Balance** — prepaid agents show a credit ledger instead of limits: a
   fuel-gauge meter that drains toward empty, the remaining credit, and
   funded-versus-spent detail.
+- **Adding a subscription** — the + swaps the list for Claude, Codex, and
+  Grok, each saying whether adding it now signs in its first account or a
+  further one. A further account asks for a name first. The panel then runs
+  `omarchy-agent-account-add --events` and follows it: the status, the code
+  Grok asks you to confirm in the browser, a field to paste Claude's code
+  back if its page shows one instead of finishing, and a link to reopen the
+  sign-in page. Esc or Cancel stops the login. The browser taking focus may
+  close the panel; the sign-in carries on and its result arrives as a
+  notification.
+- **Default agent** — the agent `omarchy agent` and the bar's right click
+  start, picked from a dropdown at the bottom. Picking one only records it
+  (`omarchy-default-agent --no-launch`), installing it first if needed.
 
 An agent appears only when it is enabled in settings and has actually
 recorded usage — on this machine or on a synced one. With none, the module
