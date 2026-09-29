@@ -518,6 +518,18 @@ def limit_window(window):
   }
 
 
+def reset_credits(result):
+  granted = (result.get("rateLimitResetCredits") or {}).get("credits") or []
+  available = [c for c in granted if isinstance(c, dict) and c.get("status") == "available"]
+  if not available:
+    return None
+  expiries = [number(c.get("expiresAt")) for c in available if number(c.get("expiresAt")) > 0]
+  return {
+    "available": len(available),
+    "nextExpiresAt": datetime.fromtimestamp(min(expiries), timezone.utc).isoformat() if expiries else "",
+  }
+
+
 def fetch_codex_rpc(home=None):
   result = {"limits": [], "tierLabel": "", "usageStatusText": "", "authHelpText": AUTH_HELP}
   env = dict(ENV, CODEX_HOME=str(home)) if home else ENV
@@ -565,6 +577,12 @@ def fetch_codex_rpc(home=None):
       entry = limit_window(window)
       if entry:
         result["limits"].append(entry)
+
+    # OpenAI hands out free "full reset" credits that wipe the rate limits on
+    # demand and lapse after a month. Worth knowing about before a limit bites.
+    credits = reset_credits(limits_msg.get("result") or {})
+    if credits:
+      result["resetCredits"] = credits
   except Exception as exc:
     result["usageStatusText"] = "Codex limits unavailable"
     result["authHelpText"] = str(exc)
@@ -620,6 +638,7 @@ def account_limits(account):
     "stale": not rpc["limits"],
     "usageStatusText": rpc["usageStatusText"],
     "authHelpText": rpc["authHelpText"],
+    "resetCredits": rpc.get("resetCredits"),
   }
 
 
@@ -647,6 +666,8 @@ def main():
       "usageStatusText": current["usageStatusText"],
       "authHelpText": current["authHelpText"],
     }
+    if current.get("resetCredits"):
+      rpc["resetCredits"] = current["resetCredits"]
   else:
     rpc = fetch_codex_rpc()
 
