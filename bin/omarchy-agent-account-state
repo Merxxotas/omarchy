@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 # omarchy:summary=Read and change the registry of Claude and Codex subscription accounts
-# omarchy:args=<registry|home|homes|list|begin|register|use|rename|remove|mode|link|autoswitch> [provider] [args...]
+# omarchy:args=<registry|home|homes|list|refresh|begin|register|use|rename|remove|mode|link|autoswitch> [provider] [args...]
 # omarchy:hidden=true
 """The account registry behind `omarchy agent account`.
 
@@ -366,6 +366,15 @@ def rename(provider: str, target: str, label: str) -> dict[str, Any]:
     return dict(account)
 
 
+# Save who each home is signed in as now. A login run in a home, through the
+# panel or the CLI, changes it, and the usage records take their names and
+# emails from here.
+def refresh(provider: str) -> None:
+  with Locked(provider) as registry:
+    for account in registry["accounts"]:
+      account.update(identity(provider, account_home(provider, account)))
+
+
 def use(provider: str, target: str) -> tuple[dict[str, Any], dict[str, Any]]:
   with Locked(provider) as registry:
     previous = active(registry)
@@ -646,6 +655,10 @@ def main(argv: list[str]) -> int:
       registry = load(provider)
       for account in registry["accounts"]:
         print("\t".join([account["id"], str(account_home(provider, account)), "1" if account["id"] == registry["active"] else "0"]))
+    elif command == "refresh":
+      for provider in ([provider_arg(args)] if args else list(PROVIDERS)):
+        if registry_path(provider).exists():
+          refresh(provider)
     elif command == "begin":
       print(begin(provider_arg(args)))
     elif command == "register":

@@ -344,3 +344,14 @@ rm -f "$HOME/.codex/auth.json"
 [[ $(omarchy-agent-account-add --check | grep '^codex ') == "codex first" ]] ||
   fail "a signed-out primary counts as a first sign-in again" "$(omarchy-agent-account-add --check)"
 pass "a signed-out account no longer counts as signed in"
+
+# --------------------------------------------------------------- refresh
+
+# A home signed in to someone else since it was added is saved as who it is
+# now, which is what the usage records name it by.
+jq '.oauthAccount.emailAddress = "switched@example.com"' "$accounts/claude/events/.claude.json" >"$test_tmp/switched.json"
+mv "$test_tmp/switched.json" "$accounts/claude/events/.claude.json"
+omarchy-agent-account-state refresh claude
+[[ $(jq -r '.accounts[] | select(.id == "events") | .email' "$accounts/claude.json") == "switched@example.com" ]] ||
+  fail "refresh saves who each home is signed in as now"
+pass "refresh saves who each home is signed in as now"
