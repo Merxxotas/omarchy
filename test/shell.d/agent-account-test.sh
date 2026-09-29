@@ -252,3 +252,24 @@ omarchy-agent-account-remove claude work </dev/null >/dev/null
 [[ ! -e $work && -d $HOME/.claude/projects && -f $HOME/.claude/settings.json ]] || fail "removing an account deletes its home and nothing it links to"
 [[ -z $(omarchy-agent-account-home claude) ]] || fail "removing the active account falls back to the primary"
 pass "remove forgets an added account without touching shared files"
+
+# ------------------------------------------------------------ panel add flow
+
+[[ $(omarchy-agent-account-add --check) == $'claude additional\ncodex additional\ngrok unsupported' ]] ||
+  fail "--check says what adding would mean for each provider" "$(omarchy-agent-account-add --check)"
+pass "--check says what adding would mean for each provider"
+
+: >"$notifications"
+OMARCHY_TEST_LOGIN_UUID=u-events OMARCHY_TEST_LOGIN_EMAIL=events@example.com \
+  omarchy-agent-account-add --events claude Events </dev/null >"$test_tmp/events-output"
+grep -qx "@@omarchy status Sign in as the account you're adding in the private window that opens." "$test_tmp/events-output" ||
+  fail "--events reports progress as tagged lines" "$(cat "$test_tmp/events-output")"
+grep -qx "@@omarchy done Added Events (events@example.com)." "$test_tmp/events-output" ||
+  fail "--events reports the result as a tagged line" "$(cat "$test_tmp/events-output")"
+grep -q "Added Events (events@example.com)." "$notifications" || fail "--events also notifies, in case the panel closed"
+if OMARCHY_TEST_LOGIN_UUID=u-events OMARCHY_TEST_LOGIN_EMAIL=events@example.com \
+  omarchy-agent-account-add --events claude Again </dev/null >"$test_tmp/events-dup" 2>&1; then
+  fail "--events fails a duplicate"
+fi
+grep -q "^@@omarchy error That's Events" "$test_tmp/events-dup" || fail "--events reports a failure as a tagged line" "$(cat "$test_tmp/events-dup")"
+pass "--events reports progress and results for the panel"
