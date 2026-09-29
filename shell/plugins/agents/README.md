@@ -32,8 +32,8 @@ Every subscription on one page, limits first.
   funded-versus-spent detail.
 - **Make something** — starter prompts (a new theme, plugin, or app) that
   start the default agent on the task through `omarchy agent prompt`.
-- **Adding a subscription** — _Add a subscription_ at the end of the list
-  (or `a`) swaps it for Claude, Codex, and Grok, each saying whether adding
+- **Adding a subscription** — the + in the hero's corner (or `a`) swaps
+  the list for Claude, Codex, and Grok, each saying whether adding
   it now signs in its first account or a further one. A further account asks
   for a name first. The panel then runs `omarchy-agent-account-add --events`
   and follows it: the status, the code Grok asks you to confirm in the

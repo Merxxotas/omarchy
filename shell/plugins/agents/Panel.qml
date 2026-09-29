@@ -696,6 +696,14 @@ Panel {
                 font.pixelSize: Style.font.display
               }
             }
+
+            trailingControl: Component {
+              AddButton {
+                visible: !root.blankSlate
+                adding: root.addStage !== ""
+                onClicked: adding ? root.cancelAdd() : root.addAccount()
+              }
+            }
           }
 
           AddView {
@@ -747,16 +755,6 @@ Panel {
                 }
               }
             }
-          }
-
-          // ---------- Add ----------
-          ActionRow {
-            visible: root.addStage === "" && !root.blankSlate
-            width: parent.width
-            glyph: "󰐕"
-            title: "Add a subscription"
-            spark: "Claude, Codex, or Grok"
-            onClicked: root.addAccount()
           }
 
           Text {
@@ -1252,66 +1250,36 @@ Panel {
     }
   }
 
-  // A thing to do: its glyph in a softly tinted square, a title, and a line
-  // under it. The row warms to the accent on hover.
-  component ActionRow: Item {
-    id: action
+  // Adding a subscription: a + in a softly tinted square that deepens on
+  // hover, and closes the add view again while it's open.
+  component AddButton: Rectangle {
+    id: addButton
     signal clicked()
-    property string glyph: ""
-    property string title: ""
-    property string spark: ""
-    implicitHeight: Math.max(actionIcon.height, actionText.implicitHeight) + Style.space(4)
+    property bool adding: false
+    implicitWidth: Style.space(34)
+    implicitHeight: implicitWidth
+    radius: Style.cornerRadius
+    color: root.alpha(Color.accent, addMouse.containsMouse ? 0.22 : 0.12)
 
-    Rectangle {
-      id: actionIcon
-      anchors.left: parent.left
-      anchors.verticalCenter: parent.verticalCenter
-      width: Style.space(34)
-      height: width
-      radius: Style.cornerRadius
-      color: root.alpha(Color.accent, actionMouse.containsMouse ? 0.22 : 0.12)
-
-      Text {
-        anchors.centerIn: parent
-        text: action.glyph
-        color: Color.accent
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.heading
-      }
-    }
-
-    Column {
-      id: actionText
-      anchors.left: actionIcon.right
-      anchors.leftMargin: Style.space(12)
-      anchors.right: parent.right
-      anchors.verticalCenter: parent.verticalCenter
-      spacing: Style.space(2)
-
-      Text {
-        text: action.title
-        color: actionMouse.containsMouse ? Color.accent : root.foreground
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.body
-      }
-
-      Text {
-        visible: text !== ""
-        width: parent.width
-        text: action.spark
-        color: root.dim
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
-        elide: Text.ElideRight
-      }
+    Text {
+      anchors.centerIn: parent
+      text: addButton.adding ? "󰅖" : "󰐕"
+      color: Color.accent
+      font.family: root.fontFamily
+      font.pixelSize: Style.font.heading
     }
 
     MouseArea {
-      id: actionMouse
+      id: addMouse
       anchors.fill: parent
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
-      onClicked: action.clicked()
+      onClicked: addButton.clicked()
+    }
+
+    PanelToolTip {
+      visible: addMouse.containsMouse
+      text: addButton.adding ? "Back to the limits" : "Add a subscription"
     }
   }
 
