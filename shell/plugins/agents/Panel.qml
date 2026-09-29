@@ -89,6 +89,9 @@ Panel {
   property string addUrl: ""
   property bool addNeedsPaste: false
   property string addResult: ""
+  // Whether the sign-in in progress opened a private window, so reopening its
+  // page does too.
+  property bool addPrivate: false
 
   function addProviderName(id) {
     for (var i = 0; i < addProviders.length; i++)
@@ -112,6 +115,7 @@ Panel {
   }
 
   function startAdd(label) {
+    addPrivate = (addChecks[addProvider] || "") === "additional"
     addStatus = "Starting…"
     addCode = ""
     addUrl = ""
@@ -167,8 +171,7 @@ Panel {
 
   function reopenSignIn() {
     if (addUrl === "") return
-    var additional = (addChecks[addProvider] || "") === "additional"
-    Util.execArgv(additional ? ["omarchy-launch-browser", "--private", addUrl] : ["omarchy-launch-browser", addUrl])
+    Util.execArgv(addPrivate ? ["omarchy-launch-browser", "--private", addUrl] : ["omarchy-launch-browser", addUrl])
   }
 
   // A few ways into making Omarchy your own, handed to the default agent.
@@ -236,12 +239,36 @@ Panel {
     if (String(account.plan || "") !== "") parts.push(account.plan)
     if (account.resetCredits && Number(account.resetCredits.available) > 0)
       parts.push(account.resetCredits.available + " free reset" + (Number(account.resetCredits.available) === 1 ? "" : "s"))
-    if (account.stale === true) {
-      var ageMs = Number(account.fetchedAt) > 0 ? nowMs - Number(account.fetchedAt) : 0
-      var age = ageMs > 60000 ? "as of " + formatDuration(ageMs) + " ago" : "last known"
-      parts.push(String(account.usageStatusText || "") !== "" ? account.usageStatusText + " · " + age : age)
-    }
     return parts.join(" · ")
+  }
+
+  // A lapsed or missing sign-in is something you can fix from here; any other
+  // trouble is only reported.
+  function needsSignIn(item) {
+    var status = String(item && item.usageStatusText || "")
+    return status === "Sign-in expired" || status === "Waiting for auth"
+  }
+
+  function otherTrouble(item) {
+    var status = String(item && item.usageStatusText || "")
+    return status !== "" && !needsSignIn(item) ? status : ""
+  }
+
+  // Sign an account that's already here in again, following along in the
+  // add view just like adding one.
+  function signInAgain(p, account) {
+    if (!p || addStage === "running") return
+    addProvider = p.providerId
+    addPrivate = !!account && account.primary !== true
+    addStatus = "Starting…"
+    addCode = ""
+    addUrl = ""
+    addNeedsPaste = false
+    addResult = ""
+    addStage = "running"
+    addProcess.command = ["omarchy-agent-account-add", "--events", "--reauth",
+      account && account.primary !== true ? String(account.id) : ":primary", p.providerId]
+    addProcess.running = true
   }
 
   function resetCreditsText(credits) {
@@ -1038,8 +1065,16 @@ Panel {
 
     // Sign-in and endpoint trouble for a single-account provider; with
     // several, each account says so on its own line.
+    TextLink {
+      visible: !section.multi && root.needsSignIn(section.provider)
+      text: "Sign-in required"
+      idleColor: root.urgent
+      tooltip: "Sign in to " + (section.provider ? section.provider.providerName : "") + " again"
+      onClicked: root.signInAgain(section.provider, null)
+    }
+
     Text {
-      visible: !section.multi && !!section.provider && String(section.provider.usageStatusText || "") !== ""
+      visible: !section.multi && root.otherTrouble(section.provider) !== ""
       width: parent.width
       text: section.provider ? String(section.provider.authHelpText || "") : ""
       color: root.urgent
@@ -1290,9 +1325,10 @@ Panel {
     property bool current: false
     property bool picked: false
     property string tooltip: ""
+    property color idleColor: root.dim
     readonly property bool hot: linkMouse.containsMouse || picked
     textFormat: Text.PlainText
-    color: current ? Color.accent : (hot ? root.foreground : root.dim)
+    color: current ? Color.accent : (hot ? root.foreground : idleColor)
     font.family: root.fontFamily
     font.pixelSize: Style.font.caption
     font.bold: current
@@ -1387,20 +1423,36 @@ Panel {
         }
       }
 
-      Text {
-        textFormat: Text.PlainText
-        visible: !head.editing && text !== ""
+      Row {
+        visible: !head.editing
         anchors.left: nameText.right
         anchors.leftMargin: Style.space(8)
-        anchors.right: parent.right
-        anchors.baseline: nameText.baseline
-        text: "· " + root.accountDetail(head.account)
-        // Numbers kept from an earlier check are normal; a sign-in that
-        // needs attention is not.
-        color: String(head.account.usageStatusText || "") !== "" ? root.urgent : root.dim
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
-        elide: Text.ElideRight
+        anchors.verticalCenter: nameText.verticalCenter
+        spacing: Style.space(8)
+
+        Text {
+          textFormat: Text.PlainText
+          visible: text !== ""
+          text: {
+            var parts = []
+            var detail = root.accountDetail(head.account)
+            if (detail !== "") parts.push(detail)
+            var trouble = root.otherTrouble(head.account)
+            if (trouble !== "") parts.push(trouble)
+            return parts.length > 0 ? "· " + parts.join(" · ") : ""
+          }
+          color: root.otherTrouble(head.account) !== "" ? root.urgent : root.dim
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+        }
+
+        TextLink {
+          visible: root.needsSignIn(head.account)
+          text: "· Sign-in required"
+          idleColor: root.urgent
+          tooltip: "Sign in to this account again"
+          onClicked: root.signInAgain(head.owner, head.account)
+        }
       }
 
       TextField {
