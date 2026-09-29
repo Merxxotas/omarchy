@@ -457,11 +457,14 @@ Panel {
         boundsBehavior: Flickable.StopAtBounds
         flickableDirection: Flickable.VerticalFlick
         interactive: contentHeight > height
-        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+        ScrollBar.vertical: ScrollBar {
+          id: panelScroll
+          policy: ScrollBar.AsNeeded
+        }
 
         Column {
           id: column
-          width: panelFlick.width
+          width: panelFlick.width - (panelFlick.interactive ? panelScroll.width + Style.space(6) : 0)
           spacing: Style.space(12)
 
           // ---------- Hero: provider mark · name · plan ----------
@@ -477,6 +480,14 @@ Panel {
             trailingControl: Component {
               Row {
                 spacing: Style.space(12)
+
+                TextLink {
+                  visible: root.accountsSupported
+                  anchors.verticalCenter: parent.verticalCenter
+                  text: "+"
+                  font.pixelSize: Style.font.heading
+                  onClicked: root.addAccount()
+                }
 
                 Repeater {
                   model: root.providers.length > 1 ? root.providers : []
@@ -494,13 +505,6 @@ Panel {
                   }
                 }
 
-                TextLink {
-                  visible: root.accountsSupported
-                  anchors.verticalCenter: parent.verticalCenter
-                  text: "+"
-                  font.pixelSize: Style.font.heading
-                  onClicked: root.addAccount()
-                }
               }
             }
             foreground: root.foreground
