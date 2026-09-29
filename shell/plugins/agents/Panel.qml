@@ -41,7 +41,6 @@ Panel {
   // one of them is where new sessions go.
   readonly property var accounts: provider && Array.isArray(provider.accounts) ? provider.accounts : []
   readonly property bool multiAccount: accounts.length > 1
-  readonly property bool accountsSupported: !!provider && (provider.providerId === "claude" || provider.providerId === "codex")
   // The account card the keyboard has picked. Picking only looks; Enter on a
   // picked card is what moves new sessions, so reading never switches.
   property int accountCursor: -1
@@ -83,9 +82,8 @@ Panel {
   }
 
   function addAccount() {
-    if (!accountsSupported) return
-    Util.execArgv(["omarchy-launch-floating-terminal-with-presentation", "omarchy-agent-account-add " + provider.providerId])
     root.close()
+    Util.execArgv(["omarchy-menu", "summon", "setup.accounts.add"])
   }
 
   readonly property bool autoSwitch: !!provider && !!provider.accountSwitch && provider.accountSwitch.mode === "auto"
@@ -482,7 +480,7 @@ Panel {
                 spacing: Style.space(12)
 
                 TextLink {
-                  visible: root.accountsSupported
+                  tooltip: "Add a subscription"
                   anchors.verticalCenter: parent.verticalCenter
                   text: "+"
                   font.pixelSize: Style.font.heading
@@ -688,32 +686,6 @@ Panel {
             width: parent.width
             spacing: Style.space(16)
 
-            // What happens when the active account reaches its threshold:
-            // a notification offering the switch, or the switch itself.
-            Item {
-              width: parent.width
-              implicitHeight: modeToggle.implicitHeight
-
-              Row {
-                id: modeToggle
-                anchors.left: parent.left
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: Style.space(14)
-
-                Repeater {
-                  model: [{ mode: "manual", label: "Notify" }, { mode: "auto", label: "Autoswitch" }]
-
-                  TextLink {
-                    required property var modelData
-                    text: modelData.label
-                    current: (modelData.mode === "auto") === root.autoSwitch
-                    onClicked: root.setSwitchMode(modelData.mode)
-                  }
-                }
-              }
-
-            }
-
             // The active account wears the accent rail; the others a quiet
             // one, so the accounts read as a list without boxing each in.
             Repeater {
@@ -907,6 +879,7 @@ Panel {
     signal clicked()
     property bool current: false
     property bool picked: false
+    property string tooltip: ""
     readonly property bool hot: linkMouse.containsMouse || picked
     textFormat: Text.PlainText
     color: current ? Color.accent : (hot ? root.foreground : root.dim)
@@ -922,6 +895,11 @@ Panel {
       hoverEnabled: true
       cursorShape: Qt.PointingHandCursor
       onClicked: link.clicked()
+    }
+
+    PanelToolTip {
+      visible: link.tooltip !== "" && linkMouse.containsMouse
+      text: link.tooltip
     }
   }
 
@@ -1023,8 +1001,8 @@ Panel {
       id: headAction
       anchors.right: parent.right
       anchors.top: parent.top
-      implicitWidth: head.isActive ? headActive.implicitWidth : headUse.implicitWidth
-      implicitHeight: head.isActive ? headActive.implicitHeight : headUse.implicitHeight
+      implicitWidth: head.isActive ? headActive.implicitWidth : useRow.implicitWidth
+      implicitHeight: head.isActive ? headActive.implicitHeight : useRow.implicitHeight
 
       Text {
         id: headActive
@@ -1037,13 +1015,33 @@ Panel {
         font.bold: true
       }
 
-      TextLink {
-        id: headUse
+      // Switching now is Use. Hovering it also offers Autoswitch: move new
+      // sessions over by themselves once the active account reaches the
+      // threshold. While that's on it stays in view, and clicking it again
+      // goes back to only being notified.
+      Row {
+        id: useRow
         visible: !head.isActive
         anchors.right: parent.right
-        text: head.picked ? "Use ⏎" : "Use"
-        picked: head.picked
-        onClicked: root.useAccount(head.account)
+        spacing: Style.space(12)
+
+        HoverHandler { id: useHover }
+
+        TextLink {
+          visible: root.autoSwitch || useHover.hovered || head.picked
+          text: "Autoswitch"
+          current: root.autoSwitch
+          tooltip: root.autoSwitch
+            ? "Stop switching automatically"
+            : "Switch here automatically at " + root.switchThreshold(root.provider) + "%"
+          onClicked: root.setSwitchMode(root.autoSwitch ? "manual" : "auto")
+        }
+
+        TextLink {
+          text: head.picked ? "Use ⏎" : "Use"
+          picked: head.picked
+          onClicked: root.useAccount(head.account)
+        }
       }
     }
   }

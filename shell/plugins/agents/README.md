@@ -13,8 +13,9 @@ cross-device aggregation); `Agent.qml` is the per-record file watcher.
   Auth and endpoint problems replace the plan line and repeat in a card.
 - **Subscription switch** — the hero's top-right corner holds a small mark
   per enabled agent, the selected one at full strength (`h`/`l` or click).
-  They appear only when more than one agent is enabled. A + after them adds
-  a Claude or Codex account.
+  They appear only when more than one agent is enabled. A + before them
+  opens _Setup > Agent Accounts > Add Account_ to add a Claude, Codex, or
+  Grok subscription.
 - **Limits** — the percentage of each allowance used, a matching meter, and
   the time until the session or weekly window resets.
 - **Accounts** — with more than one Claude or Codex subscription account
@@ -22,10 +23,11 @@ cross-device aggregation); `Agent.qml` is the per-record file watcher.
   name, email, plan, and a compact line per window with its meter,
   percentage, and time to reset. An accent rail and an _ACTIVE_ label mark
   the account new sessions start as; the others get a quiet rail and a _Use_
-  link. Click a name to rename the account in place. A sign-in that needs
-  attention shows in the urgent color. Notify / Autoswitch above the list
-  picks what reaching the threshold does (hover either for the threshold),
-  and the + in the hero adds another account.
+  link. Hovering Use also reveals Autoswitch, which moves new sessions over
+  on their own once the active account reaches its threshold; it stays lit
+  while on, and clicking it again goes back to notifying. Click a name to
+  rename the account in place. A sign-in that needs attention shows in the
+  urgent color.
 - **Balance** — prepaid agents report a credit ledger instead of limits:
   remaining credit, a fuel-gauge meter that drains toward empty, and
   funded-versus-spent detail.
@@ -121,8 +123,8 @@ only adds the meter and the spent-of-funded line under the real figure.
 - Bar icon: left = panel, right = launch agent, middle = next subscription.
 - Panel: `h`/`l` switch subscription, `j`/`k` scroll, `r` or Enter refresh,
   Tab moves to the neighboring bar panel, Esc closes.
-- Accounts: `1`–`9` pick an account card and Enter makes it active (picking
-  alone never switches), `a` adds an account, `m` toggles automatic
+- Accounts: `1`–`9` pick an account and Enter makes it active (picking
+  alone never switches), `a` adds a subscription, `m` toggles automatic
   switching. While a provider with several accounts has its active one at 80%
   or more of any window, the limits refresh every minute.
 - IPC: `omarchy-shell omarchy.agents <open|close|toggle|refresh|next>`.
