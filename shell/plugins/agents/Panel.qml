@@ -125,12 +125,23 @@ Panel {
     var parts = []
     if (String(account.email || "") !== "") parts.push(account.email)
     if (String(account.plan || "") !== "") parts.push(account.plan)
+    if (account.resetCredits && Number(account.resetCredits.available) > 0)
+      parts.push(account.resetCredits.available + " free reset" + (Number(account.resetCredits.available) === 1 ? "" : "s"))
     if (account.stale === true) {
       var ageMs = Number(account.fetchedAt) > 0 ? nowMs - Number(account.fetchedAt) : 0
       var age = ageMs > 60000 ? "as of " + formatDuration(ageMs) + " ago" : "last known"
       parts.push(String(account.usageStatusText || "") !== "" ? account.usageStatusText + " · " + age : age)
     }
     return parts.join(" · ")
+  }
+
+  function resetCreditsText(credits) {
+    if (!credits || !(Number(credits.available) > 0)) return ""
+    var count = Number(credits.available)
+    var text = count + " free reset" + (count === 1 ? "" : "s")
+    var expires = new Date(String(credits.nextExpiresAt || "")).getTime()
+    if (isFinite(expires) && expires > nowMs) text += " · next expires in " + formatDuration(expires - nowMs)
+    return text
   }
 
   function planLabel(p) {
@@ -480,7 +491,7 @@ Panel {
           // When the panel scrolls, the bar gets its own strip rather than
           // sitting on top of the right-aligned numbers.
           width: panelFlick.width - (panelFlick.interactive ? panelScroll.width + Style.space(6) : 0)
-          spacing: Style.space(12)
+          spacing: Style.space(16)
 
           // ---------- Hero: agents · rotating summary · add ----------
           PanelHero {
@@ -560,7 +571,7 @@ Panel {
     readonly property bool multi: accounts.length > 1
     readonly property var windows: root.limitWindows(provider)
     readonly property var balance: provider ? (provider.balance || null) : null
-    spacing: Style.space(12)
+    spacing: Style.space(16)
 
     PanelSeparator { foreground: root.foreground }
 
@@ -610,13 +621,29 @@ Panel {
       wrapMode: Text.WordWrap
     }
 
-    Repeater {
-      model: section.multi ? [] : section.windows
+    Column {
+      visible: !section.multi && section.windows.length > 0
+      width: parent.width
+      spacing: Style.space(12)
 
-      CompactLimit {
-        required property var modelData
-        width: section.width
-        window: modelData
+      Repeater {
+        model: section.multi ? [] : section.windows
+
+        CompactLimit {
+          required property var modelData
+          width: section.width
+          window: modelData
+        }
+      }
+
+      Text {
+        textFormat: Text.PlainText
+        visible: text !== ""
+        width: parent.width
+        text: root.resetCreditsText(section.provider ? section.provider.resetCredits : null)
+        color: root.dim
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.caption
       }
     }
 
@@ -685,7 +712,7 @@ Panel {
         required property int index
         width: section.width
         topPadding: index > 0 ? Style.space(6) : 0
-        spacing: Style.space(8)
+        spacing: Style.space(14)
 
         AccountHeader {
           width: parent.width
@@ -694,13 +721,18 @@ Panel {
           picked: root.isPicked(section.provider, accountBlock.modelData)
         }
 
-        Repeater {
-          model: root.limitWindows({ limits: accountBlock.modelData.limits || [] })
+        Column {
+          width: parent.width
+          spacing: Style.space(12)
 
-          CompactLimit {
-            required property var modelData
-            width: accountBlock.width
-            window: modelData
+          Repeater {
+            model: root.limitWindows({ limits: accountBlock.modelData.limits || [] })
+
+            CompactLimit {
+              required property var modelData
+              width: accountBlock.width
+              window: modelData
+            }
           }
         }
       }
@@ -814,7 +846,7 @@ Panel {
       anchors.left: parent.left
       anchors.right: headAction.left
       anchors.rightMargin: Style.spacing.sm
-      spacing: Style.space(2)
+      spacing: Style.space(4)
 
       Text {
         id: nameText
@@ -934,7 +966,7 @@ Panel {
       text: compact.window ? compact.window.title : ""
       color: root.foreground
       font.family: root.fontFamily
-      font.pixelSize: Style.font.caption
+      font.pixelSize: Style.font.bodySmall
       elide: Text.ElideRight
     }
 
@@ -958,7 +990,7 @@ Panel {
         + (compact.resetMs > 0 ? "  " + root.formatDuration(compact.resetMs) : "")
       color: compact.alarming ? root.urgent : root.dim
       font.family: root.fontFamily
-      font.pixelSize: Style.font.caption
+      font.pixelSize: Style.font.bodySmall
     }
   }
 
