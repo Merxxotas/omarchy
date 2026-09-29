@@ -558,6 +558,20 @@ def fetch_codex_rpc(home=None):
     proc.stdin.write(json.dumps({"method": "initialized", "params": {}}) + "\n")
     proc.stdin.flush()
     limits_msg = rpc_request(proc, 2, "account/rateLimits/read", timeout=8)
+
+    # A home nobody is signed in to answers with an error rather than limits.
+    # Say so the same way the Claude collector does, so the panel offers to
+    # sign that account in again.
+    error = limits_msg.get("error")
+    if isinstance(error, dict):
+      message = str(error.get("message") or "")
+      if "auth" in message.lower():
+        result["usageStatusText"] = "Waiting for auth"
+        result["authHelpText"] = AUTH_HELP
+      else:
+        result["usageStatusText"] = "Codex limits unavailable"
+        result["authHelpText"] = message
+      return result
     limits = (limits_msg.get("result") or {}).get("rateLimits") or {}
     plan = limits.get("planType") or ""
 

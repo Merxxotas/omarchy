@@ -137,3 +137,12 @@ registry main auto 80
 record 0.85 "$soon" 0.12 "$later"
 [[ $(autoswitch) == "claude" ]] || fail "the threshold is configurable"
 pass "the threshold is configurable"
+
+# An account nobody is signed in to is never switched to, however much room
+# its old numbers show.
+registry main auto
+record 0.97 "$soon" 0.10 "$later"
+jq '.accounts[1].usageStatusText = "Waiting for auth"' "$usage/claude.json" >"$test_tmp/record.json"
+mv "$test_tmp/record.json" "$usage/claude.json"
+[[ -z $(autoswitch) && $(active) == "main" ]] || fail "a signed-out account is never switched to"
+pass "a signed-out account is never switched to"
