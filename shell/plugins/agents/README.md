@@ -13,8 +13,7 @@ Every subscription on one page, limits first.
 
 - **Hero** — the agents robot, and a line that rotates through what the
   token counts add up to across every agent: tokens this week and today, the
-  most used model, the busiest day, and today's prompts and sessions. The +
-  on the right adds a subscription (below).
+  most used model, the busiest day, and today's prompts and sessions.
 - **One section per agent** — its mark, name, and plan, then a compact line
   per limit window: its meter, the percentage used, and the time until it
   resets. A model-scoped allowance on the same clock (Claude's Fable weekly
@@ -31,28 +30,24 @@ Every subscription on one page, limits first.
 - **Balance** — prepaid agents show a credit ledger instead of limits: a
   fuel-gauge meter that drains toward empty, the remaining credit, and
   funded-versus-spent detail.
-- **Adding a subscription** — the + swaps the list for Claude, Codex, and
-  Grok, each saying whether adding it now signs in its first account or a
-  further one. A further account asks for a name first. The panel then runs
-  `omarchy-agent-account-add --events` and follows it: the status, the code
-  Grok asks you to confirm in the browser, a field to paste Claude's code
-  back if its page shows one instead of finishing, and a link to reopen the
-  sign-in page. Esc or Cancel stops the login. The browser taking focus may
-  close the panel; the sign-in carries on and its result arrives as a
-  notification.
-- **Default agent** — the agent `omarchy agent` and the bar's right click
-  start, picked from a dropdown at the bottom. Picking one only records it
-  (`omarchy-default-agent --no-launch`), installing it first if needed.
+- **Make something** — starter prompts (a new theme, plugin, or app) that
+  start the default agent on the task through `omarchy agent prompt`.
+- **Adding a subscription** — _Add a subscription_ at the end of the list
+  (or `a`) swaps it for Claude, Codex, and Grok, each saying whether adding
+  it now signs in its first account or a further one. A further account asks
+  for a name first. The panel then runs `omarchy-agent-account-add --events`
+  and follows it: the status, the code Grok asks you to confirm in the
+  browser, a field to paste Claude's code back if its page shows one instead
+  of finishing, and a link to reopen the sign-in page. Esc or Cancel stops
+  the login. The browser taking focus may close the panel; the sign-in
+  carries on and its result arrives as a notification.
 
-An agent appears only when it is enabled in settings and has actually
-recorded usage — on this machine or on a synced one. With none, the module
-leaves the bar entirely rather than sitting there with nothing to say. A CLI
-installed mid-session shows up at the next refresh, so nothing polls the disk
-waiting for it.
-
-That self-hiding is why the widget ships in the default bar layout: a machine
-that has never run an AI coding agent draws nothing, and the icon arrives on
-its own the first time a scan finds usage. Drop it with
+The icon is always in the bar. On a machine with no agent yet, the panel is
+the blank slate for setting one up: it opens on the same choice of Claude,
+Codex, or Grok, and the first agent signed in becomes the default agent if
+none was picked. An agent appears once it is enabled in settings and has
+recorded usage, on this machine or a synced one; a CLI installed
+mid-session shows up at the next refresh. Drop the widget with
 `omarchy plugin disable omarchy.agents`.
 
 ## Data

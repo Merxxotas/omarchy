@@ -128,6 +128,10 @@ Panel {
     root.focusKeys()
   }
 
+  // A first sign-in keeps saying so until its limits arrive, rather than
+  // flashing the choices again while the record is written.
+  onBlankSlateChanged: if (!blankSlate && addStage === "done") addStage = ""
+
   function submitPaste(code) {
     if (!addProcess.running || code.trim() === "") return
     addProcess.write(code.trim() + "\n")
@@ -167,30 +171,16 @@ Panel {
     Util.execArgv(additional ? ["omarchy-launch-browser", "--private", addUrl] : ["omarchy-launch-browser", addUrl])
   }
 
-  // ------------------------------------------------------- default agent
-
-  readonly property var agentOptions: [
-    { value: "claude", label: "Claude Code" },
-    { value: "codex", label: "Codex" },
-    { value: "grok", label: "Grok" },
-    { value: "agy", label: "Antigravity" },
-    { value: "crush", label: "Crush" },
-    { value: "cursor-agent", label: "Cursor CLI" },
-    { value: "copilot", label: "GitHub Copilot" },
-    { value: "hermes", label: "Hermes" },
-    { value: "muse", label: "Muse Code" },
-    { value: "omp", label: "Oh My Pi" },
-    { value: "openclaw", label: "OpenClaw" },
-    { value: "opencode", label: "OpenCode" },
-    { value: "ori", label: "Ori" },
-    { value: "pi", label: "Pi" }
+  // A few ways into making Omarchy your own, handed to the default agent.
+  readonly property var starterPrompts: [
+    { label: "New theme", prompt: "Make me a new Omarchy theme. Ask me what look or inspiration I have in mind, then build it following the Omarchy skill's theming guide and switch to it." },
+    { label: "New plugin", prompt: "Make me a new Omarchy shell plugin. Ask me what I'd like it to do, then build it following the Omarchy skill's plugin guide and enable it." },
+    { label: "New app", prompt: "Make me a new app for my Omarchy desktop. Ask me what it should do, then build it and add it to the app launcher." }
   ]
-  property string defaultAgent: ""
 
-  function setDefaultAgent(agent) {
-    if (agent === "" || agent === defaultAgent) return
-    defaultAgent = agent
-    Util.execArgv(["omarchy-default-agent", "--no-launch", agent])
+  function startPrompt(prompt) {
+    root.close()
+    Util.execArgv(["omarchy-agent-prompt", prompt])
   }
 
   function renameAccount(p, account, label) {
@@ -475,7 +465,7 @@ Panel {
   property int phraseIndex: 0
   readonly property string heroPhrase: summaryPhrases.length > 0
     ? summaryPhrases[phraseIndex % summaryPhrases.length]
-    : (providers.length > 0 ? "Subscriptions" : "No usage yet")
+    : (providers.length > 0 ? "Subscriptions" : "Not set up yet")
 
   function dayName(date) {
     var parsed = new Date(String(date || "") + "T00:00:00")
@@ -521,10 +511,13 @@ Panel {
     return candidates
   }
 
-  // Nothing to report, nothing in the bar: Bar.qml collapses a slot whose item
-  // is invisible, so the icon appears the moment the first scan finds usage and
-  // stays away entirely on a machine that has never run either CLI.
-  visible: providers.length > 0
+  // Always in the bar: on a machine with no agent yet, the panel is where you
+  // set one up.
+  readonly property bool blankSlate: providers.length === 0
+  // Choosing a provider: asked for with the +, or simply what the panel is
+  // while nothing is set up. It's derived rather than switched into, so
+  // records that load a moment after the panel opens take its place.
+  readonly property bool picking: addStage === "pick" || (blankSlate && addStage === "")
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
@@ -532,7 +525,7 @@ Panel {
     cursorActive = false
     accountCursor = -1
     if (addStage !== "running") addStage = ""
-    if (!defaultAgentProcess.running) defaultAgentProcess.running = true
+    if (blankSlate && !checkProcess.running) checkProcess.running = true
     nowMs = Date.now()
     if (panelFlick) panelFlick.contentY = 0
     usage.refreshLimits()
@@ -575,17 +568,7 @@ Panel {
   Timer {
     id: addDoneTimer
     interval: 2500
-    onTriggered: if (root.addStage === "done") root.addStage = ""
-  }
-
-  Process {
-    id: defaultAgentProcess
-    running: false
-    command: ["omarchy-default-agent"]
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: root.defaultAgent = text.trim()
-    }
+    onTriggered: if (root.addStage === "done" && !root.blankSlate) root.addStage = ""
   }
 
   // Cheap enough to keep running: it only re-evaluates text bindings, and a
@@ -713,34 +696,10 @@ Panel {
                 font.pixelSize: Style.font.display
               }
             }
-
-            trailingControl: Component {
-              PanelActionButton {
-                iconText: root.addStage === "" ? "󰐕" : "󰅖"
-                tooltipText: root.addStage === "" ? "Add a subscription" : "Back to the limits"
-                bordered: true
-                foreground: Color.accent
-                fontFamily: root.fontFamily
-                fontSize: Style.font.heading
-                onClicked: root.addStage === "" ? root.addAccount() : root.cancelAdd()
-              }
-            }
-          }
-
-          Text {
-            visible: root.providers.length === 0
-            width: parent.width
-            topPadding: Style.space(24)
-            text: "No AI coding subscriptions found.\nAgents show up here once you've used them."
-            color: root.dim
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.body
-            horizontalAlignment: Text.AlignHCenter
-            wrapMode: Text.WordWrap
           }
 
           AddView {
-            visible: root.addStage !== ""
+            visible: root.addStage !== "" || root.blankSlate
             width: column.width
           }
 
@@ -754,37 +713,51 @@ Panel {
             }
           }
 
-          // ---------- Default agent ----------
+          // ---------- Make something ----------
           PanelSeparator {
-            visible: root.addStage === ""
+            visible: root.addStage === "" && !root.blankSlate
             foreground: root.foreground
           }
 
-          Item {
-            visible: root.addStage === ""
+          Column {
+            visible: root.addStage === "" && !root.blankSlate
             width: parent.width
-            implicitHeight: agentPicker.implicitHeight
+            spacing: Style.space(10)
 
-            Text {
-              anchors.left: parent.left
-              anchors.verticalCenter: parent.verticalCenter
-              text: "Default agent"
-              color: root.foreground
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.bodySmall
-            }
-
-            Dropdown {
-              id: agentPicker
-              anchors.right: parent.right
-              anchors.verticalCenter: parent.verticalCenter
-              width: Style.space(170)
-              showLabel: false
+            PanelSectionHeader {
+              text: "MAKE SOMETHING"
+              foreground: root.foreground
               fontFamily: root.fontFamily
-              options: root.agentOptions
-              value: root.defaultAgent
-              onChanged: function(v) { root.setDefaultAgent(v) }
             }
+
+            Row {
+              spacing: Style.space(20)
+
+              Repeater {
+                model: root.starterPrompts
+
+                TextLink {
+                  required property var modelData
+                  text: modelData.label
+                  font.pixelSize: Style.font.bodySmall
+                  tooltip: "Start your default agent on it"
+                  onClicked: root.startPrompt(modelData.prompt)
+                }
+              }
+            }
+          }
+
+          // ---------- Add ----------
+          PanelSeparator {
+            visible: root.addStage === "" && !root.blankSlate
+            foreground: root.foreground
+          }
+
+          TextLink {
+            visible: root.addStage === "" && !root.blankSlate
+            text: "󰐕  Add a subscription"
+            font.pixelSize: Style.font.bodySmall
+            onClicked: root.addAccount()
           }
 
           Text {
@@ -819,7 +792,9 @@ Panel {
         id: addTitle
         anchors.left: parent.left
         anchors.verticalCenter: parent.verticalCenter
-        text: root.addStage === "pick" ? "Add a subscription" : root.addProviderName(root.addProvider)
+        text: root.picking
+          ? (root.blankSlate ? "Set up an agent" : "Add a subscription")
+          : root.addProviderName(root.addProvider)
         color: root.foreground
         font.family: root.fontFamily
         font.pixelSize: Style.font.body
@@ -829,15 +804,25 @@ Panel {
       TextLink {
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter
-        visible: root.addStage !== "done"
+        visible: root.addStage !== "done" && !(root.blankSlate && root.picking)
         text: root.addStage === "running" ? "Cancel" : "Back"
         onClicked: root.cancelAdd()
       }
     }
 
+    Text {
+      visible: root.blankSlate && root.picking
+      width: parent.width
+      text: "Sign in to an AI coding subscription, and this panel keeps track of how much of it you have left."
+      color: root.dim
+      font.family: root.fontFamily
+      font.pixelSize: Style.font.caption
+      wrapMode: Text.WordWrap
+    }
+
     // Pick: each provider, and what adding it now would mean.
     Repeater {
-      model: root.addStage === "pick" ? root.addProviders : []
+      model: root.picking ? root.addProviders : []
 
       Item {
         id: choice
