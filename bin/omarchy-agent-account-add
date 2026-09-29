@@ -124,6 +124,13 @@ login() {
 if ! primary_signed_in "$provider"; then
   say "Sign in to $name in the browser window that opens."
   if (unset CLAUDE_CONFIG_DIR CODEX_HOME GROK_HOME; login) && primary_signed_in "$provider"; then
+    # The first agent signed in on a machine with none chosen becomes the
+    # default, so `omarchy agent` and the panel's starter prompts have one to
+    # run. A default someone already picked is never touched.
+    if [[ -z $(omarchy-default-agent) ]]; then
+      mkdir -p "$HOME/.config/omarchy/defaults"
+      printf '%s\n' "$provider" >"$HOME/.config/omarchy/defaults/agent"
+    fi
     omarchy-agent-usage-update --force "$provider" >/dev/null 2>&1 &
     finish "Signed in to $name."
   else
