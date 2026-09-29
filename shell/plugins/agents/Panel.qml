@@ -1481,7 +1481,7 @@ Panel {
     readonly property var scoped: window && window.scoped ? window.scoped : []
     readonly property bool alarming: window && window.percent >= 0.9
     readonly property real resetMs: root.resetMsFor(window)
-    implicitHeight: compactTitle.implicitHeight
+    implicitHeight: Math.max(compactTitle.implicitHeight, compactValue.implicitHeight)
 
     HoverHandler { id: compactHover }
 
@@ -1518,18 +1518,34 @@ Panel {
       markers: compact.scoped
     }
 
-    Text {
+    // The percentage and the time left, stacked, so the meter gets the width.
+    Column {
       id: compactValue
-      textFormat: Text.PlainText
-      width: Style.space(96)
+      width: Style.space(52)
       anchors.right: parent.right
       anchors.verticalCenter: parent.verticalCenter
-      horizontalAlignment: Text.AlignRight
-      text: (compact.window ? Math.round(compact.window.percent * 100) + "%" : "—")
-        + (compact.resetMs > 0 ? "  " + root.formatDuration(compact.resetMs) : "")
-      color: compact.alarming ? root.urgent : root.dim
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.bodySmall
+
+      Text {
+        width: parent.width
+        textFormat: Text.PlainText
+        horizontalAlignment: Text.AlignRight
+        text: compact.window ? Math.round(compact.window.percent * 100) + "%" : "—"
+        color: compact.alarming ? root.urgent : root.dim
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.bodySmall
+      }
+
+      Text {
+        visible: compact.resetMs > 0
+        width: parent.width
+        textFormat: Text.PlainText
+        horizontalAlignment: Text.AlignRight
+        text: root.formatDuration(compact.resetMs)
+        color: compact.alarming ? root.urgent : root.dim
+        opacity: 0.8
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.caption
+      }
     }
   }
 
