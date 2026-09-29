@@ -1468,7 +1468,7 @@ Panel {
     readonly property var scoped: window && window.scoped ? window.scoped : []
     readonly property bool alarming: window && window.percent >= 0.9
     readonly property real resetMs: root.resetMsFor(window)
-    implicitHeight: compactTitle.implicitHeight
+    implicitHeight: compactTitle.implicitHeight + (compactReset.visible ? compactReset.implicitHeight + Style.space(3) : 0)
 
     HoverHandler { id: compactHover }
 
@@ -1487,7 +1487,7 @@ Panel {
       id: compactTitle
       textFormat: Text.PlainText
       width: parent.width * 0.3
-      anchors.verticalCenter: parent.verticalCenter
+      anchors.top: parent.top
       text: compact.window ? compact.window.title : ""
       color: root.foreground
       font.family: root.fontFamily
@@ -1496,10 +1496,11 @@ Panel {
     }
 
     Meter {
+      id: compactMeter
       anchors.left: compactTitle.right
       anchors.right: compactValue.left
       anchors.rightMargin: Style.spacing.md
-      anchors.verticalCenter: parent.verticalCenter
+      anchors.verticalCenter: compactTitle.verticalCenter
       value: compact.window ? compact.window.percent : -1
       alarming: compact.alarming
       markers: compact.scoped
@@ -1508,15 +1509,28 @@ Panel {
     Text {
       id: compactValue
       textFormat: Text.PlainText
-      width: Style.space(96)
+      width: Style.space(44)
       anchors.right: parent.right
-      anchors.verticalCenter: parent.verticalCenter
+      anchors.verticalCenter: compactTitle.verticalCenter
       horizontalAlignment: Text.AlignRight
-      text: (compact.window ? Math.round(compact.window.percent * 100) + "%" : "—")
-        + (compact.resetMs > 0 ? "  " + root.formatDuration(compact.resetMs) : "")
+      text: compact.window ? Math.round(compact.window.percent * 100) + "%" : "—"
       color: compact.alarming ? root.urgent : root.dim
       font.family: root.fontFamily
       font.pixelSize: Style.font.bodySmall
+    }
+
+    // When the window rolls over, in small under the start of its meter.
+    Text {
+      id: compactReset
+      textFormat: Text.PlainText
+      visible: compact.resetMs > 0
+      anchors.left: compactMeter.left
+      anchors.top: compactTitle.bottom
+      anchors.topMargin: Style.space(3)
+      text: "Resets in " + root.formatDuration(compact.resetMs)
+      color: root.dim
+      font.family: root.fontFamily
+      font.pixelSize: Style.font.caption
     }
   }
 
