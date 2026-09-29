@@ -336,3 +336,11 @@ echo '{"id":"claude","limits":[{"label":"Session (5-hour)","percent":0.4,"resets
 [[ $(XDG_STATE_HOME="$solo" omarchy-agent-account-list claude --json | jq -c '.[0].accounts[0].limits[0].percent') == "0.4" ]] ||
   fail "a single account's limits are listed from the record's top level"
 pass "a single account's limits are listed"
+
+# ------------------------------------------------------------- signed out
+
+# A login that's gone is gone, whatever the registry remembered about it.
+rm -f "$HOME/.codex/auth.json"
+[[ $(omarchy-agent-account-add --check | grep '^codex ') == "codex first" ]] ||
+  fail "a signed-out primary counts as a first sign-in again" "$(omarchy-agent-account-add --check)"
+pass "a signed-out account no longer counts as signed in"

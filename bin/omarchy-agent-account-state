@@ -310,9 +310,7 @@ def register(provider: str, label: str, pending: Path) -> dict[str, Any]:
     # Each home is asked who it is now, not trusted from when it was added: a
     # `claude auth login` run by hand in ~/.claude changes the primary.
     for account in registry["accounts"]:
-      current = identity(provider, account_home(provider, account))
-      if current["accountId"]:
-        account.update(current)
+      account.update(identity(provider, account_home(provider, account)))
     for account in registry["accounts"]:
       if account.get("accountId") == found["accountId"]:
         shutil.rmtree(pending, ignore_errors=True)
@@ -604,9 +602,7 @@ def summary(provider: str, registry: dict[str, Any]) -> dict[str, Any]:
   # Identity is re-read from each home rather than trusted from the registry:
   # a `claude auth login` run by hand in a home changes who it is.
   for account in registry["accounts"]:
-    found = identity(provider, account_home(provider, account))
-    if found["accountId"]:
-      account.update(found)
+    account.update(identity(provider, account_home(provider, account)))
   return {
     "provider": provider,
     "name": PROVIDERS[provider]["name"],

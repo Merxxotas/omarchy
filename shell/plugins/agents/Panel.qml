@@ -158,6 +158,11 @@ Panel {
         if (tagged[1] === "done") {
           usage.refreshLimits()
           addDoneTimer.restart()
+          // Nothing to show yet means the sign-in is what counts as set up.
+          if (providers.length === 0 && !checkProcess.running) {
+            addChecks = ({})
+            checkProcess.running = true
+          }
         }
       }
       return
@@ -539,7 +544,12 @@ Panel {
 
   // Always in the bar: on a machine with no agent yet, the panel is where you
   // set one up.
-  readonly property bool blankSlate: providers.length === 0
+  readonly property bool anySignedIn: {
+    for (var id in addChecks)
+      if (addChecks[id] !== "first") return true
+    return false
+  }
+  readonly property bool blankSlate: providers.length === 0 && !anySignedIn
   // Choosing a provider: asked for with the +, or simply what the panel is
   // while nothing is set up. It's derived rather than switched into, so
   // records that load a moment after the panel opens take its place.
@@ -551,7 +561,7 @@ Panel {
     cursorActive = false
     accountCursor = -1
     if (addStage !== "running") addStage = ""
-    if (blankSlate && !checkProcess.running) checkProcess.running = true
+    if (providers.length === 0 && !checkProcess.running) checkProcess.running = true
     nowMs = Date.now()
     if (panelFlick) panelFlick.contentY = 0
     usage.refreshLimits()
