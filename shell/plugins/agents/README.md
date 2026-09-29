@@ -21,7 +21,7 @@ Every subscription on one page, limits first.
   row's tooltip names it. Sign-in and endpoint trouble shows under the name in the urgent
   color.
 - **Accounts** — an agent with more than one subscription account (see
-  `omarchy agent account`) lists each: name, email, plan, and its own limit
+  `omarchy agent account`) lists each: name and plan on one line (the email on hover), and its own limit
   lines. An _ACTIVE_ label marks the account new sessions start as; the
   others get a _Use_ link. Hovering Use also reveals Autoswitch, which moves
   new sessions over on their own once the active account reaches its

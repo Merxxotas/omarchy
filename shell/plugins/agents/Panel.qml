@@ -233,7 +233,6 @@ Panel {
 
   function accountDetail(account) {
     var parts = []
-    if (String(account.email || "") !== "") parts.push(account.email)
     if (String(account.plan || "") !== "") parts.push(account.plan)
     if (account.resetCredits && Number(account.resetCredits.available) > 0)
       parts.push(account.resetCredits.available + " free reset" + (Number(account.resetCredits.available) === 1 ? "" : "s"))
@@ -1350,18 +1349,22 @@ Panel {
       }
     }
 
-    Column {
+    // One line: the name, then its plan and any caveats, quieter. The
+    // email is the name's tooltip.
+    Item {
       id: headText
       anchors.left: parent.left
       anchors.right: headAction.left
       anchors.rightMargin: Style.spacing.sm
-      spacing: Style.space(4)
+      implicitHeight: head.editing ? nameField.implicitHeight : nameText.implicitHeight
 
       Text {
         id: nameText
         textFormat: Text.PlainText
         visible: !head.editing
-        width: Math.min(implicitWidth, parent.width)
+        anchors.left: parent.left
+        anchors.verticalCenter: parent.verticalCenter
+        width: Math.min(implicitWidth, parent.width * 0.6)
         text: head.label
         color: head.picked ? Color.accent : root.foreground
         font.family: root.fontFamily
@@ -1377,12 +1380,35 @@ Panel {
           cursorShape: Qt.IBeamCursor
           onClicked: head.startRename()
         }
+
+        PanelToolTip {
+          visible: nameMouse.containsMouse && String(head.account.email || "") !== ""
+          text: String(head.account.email || "")
+        }
+      }
+
+      Text {
+        textFormat: Text.PlainText
+        visible: !head.editing && text !== ""
+        anchors.left: nameText.right
+        anchors.leftMargin: Style.space(8)
+        anchors.right: parent.right
+        anchors.baseline: nameText.baseline
+        text: "· " + root.accountDetail(head.account)
+        // Numbers kept from an earlier check are normal; a sign-in that
+        // needs attention is not.
+        color: String(head.account.usageStatusText || "") !== "" ? root.urgent : root.dim
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.caption
+        elide: Text.ElideRight
       }
 
       TextField {
         id: nameField
         visible: head.editing
-        width: parent.width
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.verticalCenter: parent.verticalCenter
         foreground: root.foreground
         font.family: root.fontFamily
         font.pixelSize: Style.font.body
@@ -1394,19 +1420,6 @@ Panel {
           head.finishRename(false)
           event.accepted = true
         }
-      }
-
-      Text {
-        textFormat: Text.PlainText
-        visible: text !== ""
-        width: parent.width
-        text: root.accountDetail(head.account)
-        // Numbers kept from an earlier check are normal; a sign-in that
-        // needs attention is not.
-        color: String(head.account.usageStatusText || "") !== "" ? root.urgent : root.dim
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
-        elide: Text.ElideRight
       }
     }
 
