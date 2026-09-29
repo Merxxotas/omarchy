@@ -1486,9 +1486,13 @@ Panel {
     HoverHandler { id: compactHover }
 
     PanelToolTip {
-      visible: compactHover.hovered && compact.scoped.length > 0
+      visible: compactHover.hovered && !!compact.window
       text: {
         var lines = []
+        if (compact.window) {
+          lines.push(compact.window.title + ": " + Math.round(compact.window.percent * 100) + "% used"
+            + (compact.resetMs > 0 ? " · resets in " + root.formatDuration(compact.resetMs) : ""))
+        }
         for (var i = 0; i < compact.scoped.length; i++)
           lines.push(compact.scoped[i].title + ": " + Math.round(compact.scoped[i].percent * 100) + "% of its "
             + String(compact.window ? compact.window.title : "").toLowerCase() + " allowance")
@@ -1511,41 +1515,35 @@ Panel {
     Meter {
       anchors.left: compactTitle.right
       anchors.right: compactValue.left
-      anchors.rightMargin: Style.spacing.md
+      anchors.rightMargin: Style.space(20)
       anchors.verticalCenter: parent.verticalCenter
       value: compact.window ? compact.window.percent : -1
       alarming: compact.alarming
       markers: compact.scoped
     }
 
-    // The percentage and the time left, stacked, so the meter gets the width.
-    Column {
+    // Sized to the widest time left ("19h 40m"), so every meter ends in the
+    // same place.
+    TextMetrics {
+      id: compactValueMetrics
+      font.family: root.fontFamily
+      font.pixelSize: Style.font.bodySmall
+      text: "00h 00m"
+    }
+
+    // How long until the window resets. The meter says how full it is; the
+    // exact percentage is in the row's tooltip.
+    Text {
       id: compactValue
-      width: Style.space(52)
+      width: Math.ceil(compactValueMetrics.advanceWidth)
       anchors.right: parent.right
       anchors.verticalCenter: parent.verticalCenter
-
-      Text {
-        width: parent.width
-        textFormat: Text.PlainText
-        horizontalAlignment: Text.AlignRight
-        text: compact.window ? Math.round(compact.window.percent * 100) + "%" : "—"
-        color: compact.alarming ? root.urgent : root.dim
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.bodySmall
-      }
-
-      Text {
-        visible: compact.resetMs > 0
-        width: parent.width
-        textFormat: Text.PlainText
-        horizontalAlignment: Text.AlignRight
-        text: root.formatDuration(compact.resetMs)
-        color: compact.alarming ? root.urgent : root.dim
-        opacity: 0.8
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
-      }
+      textFormat: Text.PlainText
+      horizontalAlignment: Text.AlignRight
+      text: compact.resetMs > 0 ? root.formatDuration(compact.resetMs) : ""
+      color: root.dim
+      font.family: root.fontFamily
+      font.pixelSize: Style.font.bodySmall
     }
   }
 
