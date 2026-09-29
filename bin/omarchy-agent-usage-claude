@@ -934,6 +934,7 @@ def account_limits(account: dict[str, Any], force: bool) -> dict[str, Any]:
     "email": str(account.get("email") or ""),
     "plan": plan or str(account.get("plan") or ""),
     "active": account["active"],
+    "primary": bool(account.get("primary")),
     "limits": limits["limits"],
     "stale": not limits["live"],
     "fetchedAt": limits["fetchedAtMs"],

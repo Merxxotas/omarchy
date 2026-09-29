@@ -634,6 +634,7 @@ def account_limits(account):
     "email": str(account.get("email") or ""),
     "plan": rpc["tierLabel"] or str(account.get("plan") or ""),
     "active": account["active"],
+    "primary": bool(account.get("primary")),
     "limits": rpc["limits"],
     "stale": not rpc["limits"],
     "usageStatusText": rpc["usageStatusText"],

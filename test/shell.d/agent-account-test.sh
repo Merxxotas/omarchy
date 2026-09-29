@@ -276,3 +276,25 @@ if OMARCHY_TEST_LOGIN_UUID=u-events OMARCHY_TEST_LOGIN_EMAIL=events@example.com 
 fi
 grep -q "^@@omarchy error That's Events" "$test_tmp/events-dup" || fail "--events reports a failure as a tagged line" "$(cat "$test_tmp/events-dup")"
 pass "--events reports progress and results for the panel"
+
+# ------------------------------------------------------------------- reauth
+
+: >"$OMARCHY_TEST_BROWSER_LOG"
+before=$(omarchy-agent-account-list claude --json | jq '.[0].accounts | length')
+rm -f "$accounts/claude/events/.credentials.json"
+OMARCHY_TEST_LOGIN_UUID=u-events OMARCHY_TEST_LOGIN_EMAIL=events@example.com \
+  omarchy-agent-account-add --events --reauth events claude </dev/null >"$test_tmp/reauth-output"
+grep -qx "@@omarchy done Signed in to Claude again." "$test_tmp/reauth-output" || fail "--reauth reports the sign-in" "$(cat "$test_tmp/reauth-output")"
+[[ -s $accounts/claude/events/.credentials.json ]] || fail "--reauth signs in to the account's own home"
+[[ $(omarchy-agent-account-list claude --json | jq '.[0].accounts | length') == "$before" ]] || fail "--reauth adds no account"
+grep -qx -- "--private https://claude.com/oauth/authorize" "$OMARCHY_TEST_BROWSER_LOG" || fail "--reauth of an added account uses a private window"
+
+: >"$OMARCHY_TEST_BROWSER_LOG"
+OMARCHY_TEST_LOGIN_UUID=u-main OMARCHY_TEST_LOGIN_EMAIL=me@example.com \
+  omarchy-agent-account-add --reauth main claude </dev/null >/dev/null
+grep -qx "default https://claude.com/oauth/authorize" "$OMARCHY_TEST_BROWSER_LOG" || fail "--reauth of the primary uses the normal browser"
+
+if omarchy-agent-account-add --reauth nobody claude </dev/null >/dev/null 2>&1; then
+  fail "--reauth of an unknown account fails"
+fi
+pass "--reauth signs an existing account in again where it lives"

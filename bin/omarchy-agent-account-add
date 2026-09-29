@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # omarchy:summary=Sign in to a Claude, Codex, or Grok subscription
-# omarchy:args=[--check] [--events] [claude|codex|grok] [label]
+# omarchy:args=[--check] [--events] [--reauth <account>] [claude|codex|grok] [label]
 # omarchy:examples=omarchy agent account add claude | omarchy agent account add Work | omarchy agent account add codex Side
 
 set -uo pipefail
@@ -12,12 +12,19 @@ set -uo pipefail
 # into the CLI's own output (which carries codes the panel shows), nothing
 # waits on a terminal, and the result also lands as a notification in case
 # the panel has closed.
+# --reauth <account> signs an account that's already here in again, in its
+# own home, for when its sign-in has lapsed.
 check=false
 events=false
+reauth=""
 while [[ ${1:-} == --* ]]; do
   case "$1" in
   --check) check=true ;;
   --events) events=true ;;
+  --reauth)
+    reauth="${2:-}"
+    shift
+    ;;
   *) break ;;
   esac
   shift
@@ -57,7 +64,7 @@ claude) provider="claude"; name="Claude"; site="claude.ai"; package="claude" ;;
 codex) provider="codex"; name="Codex"; site="chatgpt.com"; package="codex" ;;
 grok) provider="grok"; name="Grok"; site="x.ai"; package="npm:@xai-official/grok" ;;
 *)
-  echo "Usage: omarchy-agent-account-add [--check] [--events] [claude|codex|grok] [label]" >&2
+  echo "Usage: omarchy-agent-account-add [--check] [--events] [--reauth <account>] [claude|codex|grok] [label]" >&2
   exit 1
   ;;
 esac
@@ -111,6 +118,15 @@ if omarchy-cmd-missing "$provider"; then
   fi
 fi
 
+# Your main browser is almost certainly signed in to the account you already
+# have, and a login would quietly reuse it. The CLIs open their login page
+# through $BROWSER, so this points it at a private window instead.
+private_browser() {
+  browser=$(mktemp "${XDG_RUNTIME_DIR:-/tmp}/omarchy-account-browser.XXXXXX")
+  printf '#!/bin/bash\nexec omarchy-launch-browser --private "$1"\n' >"$browser"
+  chmod +x "$browser"
+}
+
 login() {
   case "$provider" in
   claude) claude auth login ;;
@@ -118,6 +134,35 @@ login() {
   grok) grok login ;;
   esac
 }
+
+# Signing an account that's already here in again, where it lives: the
+# primary home through the normal browser, an added one through a private
+# window. Its home is never recreated or removed.
+if [[ -n $reauth ]]; then
+  if [[ $provider == "grok" || $reauth == ":primary" ]]; then
+    account_home="$HOME/.$provider"
+  else
+    account_home=$(omarchy-agent-account-state homes "$provider" | awk -F'\t' -v id="$reauth" '$1 == id { print $2 }')
+  fi
+  [[ -n $account_home ]] || fail "No $name account named $reauth."
+
+  if [[ $account_home == "$HOME/.$provider" ]]; then
+    say "Sign in to $name again in the browser window that opens."
+    (unset CLAUDE_CONFIG_DIR CODEX_HOME GROK_HOME; login) || fail "The $name sign-in didn't finish."
+  else
+    say "Sign in again as this account in the private window that opens."
+    private_browser
+    if [[ $provider == "claude" ]]; then
+      BROWSER="$browser" CLAUDE_CONFIG_DIR="$account_home" claude auth login || fail "The $name sign-in didn't finish."
+    else
+      BROWSER="$browser" CODEX_HOME="$account_home" codex login || fail "The $name sign-in didn't finish."
+    fi
+  fi
+
+  omarchy-agent-usage-update --force "$provider" >/dev/null 2>&1 &
+  finish "Signed in to $name again."
+  exit 0
+fi
 
 # The first subscription signs in where the CLI always looks, through your
 # normal browser: nothing is signed in there yet that it could be mistaken for.
@@ -158,12 +203,7 @@ EOF
 
   home=$(omarchy-agent-account-state begin "$provider") || fail "Couldn't set up a home for the new account."
 
-  # Your main browser is almost certainly signed in to the account you already
-  # have, and the login would quietly reuse it. Both CLIs open their login page
-  # through $BROWSER, so point it at a private window instead.
-  browser=$(mktemp "${XDG_RUNTIME_DIR:-/tmp}/omarchy-account-browser.XXXXXX")
-  printf '#!/bin/bash\nexec omarchy-launch-browser --private "$1"\n' >"$browser"
-  chmod +x "$browser"
+  private_browser
 
   if [[ $provider == "claude" ]]; then
     BROWSER="$browser" CLAUDE_CONFIG_DIR="$home" claude auth login
