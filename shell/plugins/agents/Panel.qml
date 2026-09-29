@@ -173,9 +173,9 @@ Panel {
 
   // A few ways into making Omarchy your own, handed to the default agent.
   readonly property var starterPrompts: [
-    { label: "New theme", prompt: "Make me a new Omarchy theme. Ask me what look or inspiration I have in mind, then build it following the Omarchy skill's theming guide and switch to it." },
-    { label: "New plugin", prompt: "Make me a new Omarchy shell plugin. Ask me what I'd like it to do, then build it following the Omarchy skill's plugin guide and enable it." },
-    { label: "New app", prompt: "Make me a new app for my Omarchy desktop. Ask me what it should do, then build it and add it to the app launcher." }
+    { glyph: "󰏘", label: "Theme", prompt: "Make me a new Omarchy theme. Ask me what look or inspiration I have in mind, then build it following the Omarchy skill's theming guide and switch to it." },
+    { glyph: "󰐱", label: "Plugin", prompt: "Make me a new Omarchy shell plugin. Ask me what I'd like it to do, then build it following the Omarchy skill's plugin guide and enable it." },
+    { glyph: "󰣆", label: "App", prompt: "Make me a new app for my Omarchy desktop. Ask me what it should do, then build it and add it to the app launcher." }
   ]
 
   function startPrompt(prompt) {
@@ -633,7 +633,7 @@ Panel {
     open: root.opened
     focusTarget: keyCatcher
     contentWidth: panel.fittedContentWidth(Style.space(380))
-    contentHeight: panel.fittedContentHeight(column.implicitHeight, Style.space(640))
+    contentHeight: panel.fittedContentHeight(column.implicitHeight, Style.space(860))
 
     PanelKeyCatcher {
       id: keyCatcher
@@ -722,7 +722,7 @@ Panel {
           Column {
             visible: root.addStage === "" && !root.blankSlate
             width: parent.width
-            spacing: Style.space(10)
+            spacing: Style.space(12)
 
             PanelSectionHeader {
               text: "MAKE SOMETHING"
@@ -731,16 +731,18 @@ Panel {
             }
 
             Row {
-              spacing: Style.space(20)
+              id: tileRow
+              width: parent.width
+              spacing: Style.space(10)
 
               Repeater {
                 model: root.starterPrompts
 
-                TextLink {
+                StarterTile {
                   required property var modelData
-                  text: modelData.label
-                  font.pixelSize: Style.font.bodySmall
-                  tooltip: "Start your default agent on it"
+                  width: (tileRow.width - tileRow.spacing * 2) / 3
+                  glyph: modelData.glyph
+                  title: modelData.label
                   onClicked: root.startPrompt(modelData.prompt)
                 }
               }
@@ -748,15 +750,12 @@ Panel {
           }
 
           // ---------- Add ----------
-          PanelSeparator {
+          ActionRow {
             visible: root.addStage === "" && !root.blankSlate
-            foreground: root.foreground
-          }
-
-          TextLink {
-            visible: root.addStage === "" && !root.blankSlate
-            text: "󰐕  Add a subscription"
-            font.pixelSize: Style.font.bodySmall
+            width: parent.width
+            glyph: "󰐕"
+            title: "Add a subscription"
+            spark: "Claude, Codex, or Grok"
             onClicked: root.addAccount()
           }
 
@@ -1202,6 +1201,117 @@ Panel {
       color: root.foreground
       font.family: root.fontFamily
       font.pixelSize: Style.font.heading
+    }
+  }
+
+  // A starter: its glyph and what it makes, on a soft tile that warms to the
+  // accent on hover.
+  component StarterTile: Rectangle {
+    id: tile
+    signal clicked()
+    property string glyph: ""
+    property string title: ""
+    implicitHeight: tileBody.implicitHeight + Style.space(32)
+    radius: Style.cornerRadius
+    color: tileMouse.containsMouse ? root.alpha(Color.accent, 0.14) : root.alpha(root.foreground, 0.05)
+
+    Column {
+      id: tileBody
+      anchors.centerIn: parent
+      spacing: Style.space(8)
+
+      Text {
+        anchors.horizontalCenter: parent.horizontalCenter
+        text: tile.glyph
+        color: Color.accent
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.display
+      }
+
+      Text {
+        anchors.horizontalCenter: parent.horizontalCenter
+        text: tile.title
+        color: tileMouse.containsMouse ? Color.accent : root.foreground
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.body
+        font.bold: true
+      }
+    }
+
+    MouseArea {
+      id: tileMouse
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onClicked: tile.clicked()
+    }
+
+    PanelToolTip {
+      visible: tileMouse.containsMouse
+      text: "Start your default agent on a new " + tile.title.toLowerCase()
+    }
+  }
+
+  // A thing to do: its glyph in a softly tinted square, a title, and a line
+  // under it. The row warms to the accent on hover.
+  component ActionRow: Item {
+    id: action
+    signal clicked()
+    property string glyph: ""
+    property string title: ""
+    property string spark: ""
+    implicitHeight: Math.max(actionIcon.height, actionText.implicitHeight) + Style.space(4)
+
+    Rectangle {
+      id: actionIcon
+      anchors.left: parent.left
+      anchors.verticalCenter: parent.verticalCenter
+      width: Style.space(34)
+      height: width
+      radius: Style.cornerRadius
+      color: root.alpha(Color.accent, actionMouse.containsMouse ? 0.22 : 0.12)
+
+      Text {
+        anchors.centerIn: parent
+        text: action.glyph
+        color: Color.accent
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.heading
+      }
+    }
+
+    Column {
+      id: actionText
+      anchors.left: actionIcon.right
+      anchors.leftMargin: Style.space(12)
+      anchors.right: parent.right
+      anchors.verticalCenter: parent.verticalCenter
+      spacing: Style.space(2)
+
+      Text {
+        text: action.title
+        color: actionMouse.containsMouse ? Color.accent : root.foreground
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.body
+      }
+
+      Text {
+        visible: text !== ""
+        width: parent.width
+        text: action.spark
+        color: root.dim
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.caption
+        elide: Text.ElideRight
+      }
+    }
+
+    MouseArea {
+      id: actionMouse
+      anchors.fill: parent
+      hoverEnabled: true
+      cursorShape: Qt.PointingHandCursor
+      onClicked: action.clicked()
     }
   }
 
