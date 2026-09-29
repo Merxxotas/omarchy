@@ -1,33 +1,73 @@
 #!/bin/bash
 
-# omarchy:summary=Sign in to another Claude or Codex subscription
-# omarchy:args=[claude|codex] [label]
-# omarchy:examples=omarchy agent account add Work | omarchy agent account add codex Side
+# omarchy:summary=Sign in to a Claude, Codex, or Grok subscription
+# omarchy:args=[claude|codex|grok] [label]
+# omarchy:examples=omarchy agent account add claude | omarchy agent account add Work | omarchy agent account add codex Side
 
 set -uo pipefail
 
 # The provider can be left out when it's your default agent:
-# `omarchy agent account use work`.
-if [[ ${1:-} != "claude" && ${1:-} != "codex" ]]; then
+# `omarchy agent account add Work`.
+if [[ ${1:-} != "claude" && ${1:-} != "codex" && ${1:-} != "grok" ]]; then
   default=$(omarchy-default-agent)
-  [[ $default == "claude" || $default == "codex" ]] && set -- "$default" "$@"
+  [[ $default == "claude" || $default == "codex" || $default == "grok" ]] && set -- "$default" "$@"
 fi
 
 case "${1:-}" in
-claude) provider="claude"; name="Claude"; site="claude.ai" ;;
-codex) provider="codex"; name="Codex"; site="chatgpt.com" ;;
+claude) provider="claude"; name="Claude"; site="claude.ai"; package="claude" ;;
+codex) provider="codex"; name="Codex"; site="chatgpt.com"; package="codex" ;;
+grok) provider="grok"; name="Grok"; site="x.ai"; package="npm:@xai-official/grok" ;;
 *)
-  echo "Usage: omarchy-agent-account-add [claude|codex] [label]" >&2
+  echo "Usage: omarchy-agent-account-add [claude|codex|grok] [label]" >&2
   exit 1
   ;;
 esac
 label="${2:-}"
 
-if [[ -z $label ]] && [[ -t 0 ]]; then
-  label=$(gum input --placeholder "Work" --prompt "Name this $name account: ") || exit 130
+if omarchy-cmd-missing "$provider"; then
+  echo "Installing the $name CLI…"
+  mise use -g "$package" || exit 1
 fi
 
-cat <<EOF
+# Whether the CLI's own home (~/.claude, ~/.codex, ~/.grok) is signed in yet.
+signed_in() {
+  if [[ $provider == "grok" ]]; then
+    [[ -s $HOME/.grok/auth.json ]]
+  else
+    omarchy-agent-account-state list "$provider" | jq -e '.[0].accounts | any(.primary and .signedIn)' >/dev/null
+  fi
+}
+
+login() {
+  case "$provider" in
+  claude) claude auth login ;;
+  codex) codex login ;;
+  grok) grok login ;;
+  esac
+}
+
+# The first subscription signs in where the CLI always looks, through your
+# normal browser: nothing is signed in there yet that it could be mistaken for.
+if ! signed_in; then
+  echo "Sign in to $name in the browser window that opens."
+  echo
+  if (unset CLAUDE_CONFIG_DIR CODEX_HOME GROK_HOME; login) && signed_in; then
+    echo
+    echo "Signed in to $name."
+    omarchy-agent-usage-update --force "$provider" >/dev/null 2>&1 &
+  else
+    echo "The $name sign-in didn't finish." >&2
+    exit 1
+  fi
+elif [[ $provider == "grok" ]]; then
+  echo "Grok is already signed in, and a second Grok account isn't supported yet." >&2
+  exit 1
+else
+  if [[ -z $label ]] && [[ -t 0 ]]; then
+    label=$(gum input --placeholder "Work" --prompt "Name this $name account: ") || exit 130
+  fi
+
+  cat <<EOF
 
 Sign in as the account you're adding in the private window that opens.
 If a private window was already open, close it first, or $site may reuse whoever it has signed in.
@@ -36,28 +76,29 @@ Don't log out of the $name CLI to do this: logging out revokes the saved sign-in
 
 EOF
 
-home=$(omarchy-agent-account-state begin "$provider") || exit 1
+  home=$(omarchy-agent-account-state begin "$provider") || exit 1
 
-# Your main browser is almost certainly signed in to the account you already
-# have, and the login would quietly reuse it. Both CLIs open their login page
-# through $BROWSER, so point it at a private window instead.
-browser=$(mktemp "${XDG_RUNTIME_DIR:-/tmp}/omarchy-account-browser.XXXXXX")
-trap 'rm -f "$browser"' EXIT
-printf '#!/bin/bash\nexec omarchy-launch-browser --private "$1"\n' >"$browser"
-chmod +x "$browser"
+  # Your main browser is almost certainly signed in to the account you already
+  # have, and the login would quietly reuse it. Both CLIs open their login page
+  # through $BROWSER, so point it at a private window instead.
+  browser=$(mktemp "${XDG_RUNTIME_DIR:-/tmp}/omarchy-account-browser.XXXXXX")
+  trap 'rm -f "$browser"' EXIT
+  printf '#!/bin/bash\nexec omarchy-launch-browser --private "$1"\n' >"$browser"
+  chmod +x "$browser"
 
-if [[ $provider == "claude" ]]; then
-  BROWSER="$browser" CLAUDE_CONFIG_DIR="$home" claude auth login
-else
-  BROWSER="$browser" CODEX_HOME="$home" codex login
-fi
+  if [[ $provider == "claude" ]]; then
+    BROWSER="$browser" CLAUDE_CONFIG_DIR="$home" claude auth login
+  else
+    BROWSER="$browser" CODEX_HOME="$home" codex login
+  fi
 
-if account=$(omarchy-agent-account-state register "$provider" "$label" "$home"); then
-  added=$(jq -r '.label + (if .email != "" then " (" + .email + ")" else "" end)' <<<"$account")
-  echo
-  echo "Added $added."
-  echo "Switch to it with: omarchy agent account use $provider $(jq -r .id <<<"$account")"
-  omarchy-agent-usage-update --force "$provider" >/dev/null 2>&1 &
-else
-  exit 1
+  if account=$(omarchy-agent-account-state register "$provider" "$label" "$home"); then
+    added=$(jq -r '.label + (if .email != "" then " (" + .email + ")" else "" end)' <<<"$account")
+    echo
+    echo "Added $added."
+    echo "Switch to it with: omarchy agent account use $provider $(jq -r .id <<<"$account")"
+    omarchy-agent-usage-update --force "$provider" >/dev/null 2>&1 &
+  else
+    exit 1
+  fi
 fi

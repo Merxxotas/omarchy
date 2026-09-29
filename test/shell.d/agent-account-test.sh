@@ -24,11 +24,14 @@ SH
 cat >"$mock_bin/claude" <<'SH'
 #!/bin/bash
 if [[ ${1:-} == "auth" && ${2:-} == "login" ]]; then
-  "$BROWSER" "https://claude.com/oauth/authorize"
+  "${BROWSER:-omarchy-test-default-browser}" "https://claude.com/oauth/authorize"
   [[ -n ${OMARCHY_TEST_LOGIN_UUID:-} ]] || exit 1
+  home=${CLAUDE_CONFIG_DIR:-$HOME/.claude}
+  account_file="$home/.claude.json"
+  [[ -z ${CLAUDE_CONFIG_DIR:-} ]] && account_file="$HOME/.claude.json"
   printf '{"oauthAccount":{"accountUuid":"%s","emailAddress":"%s","organizationName":"Work"}}\n' \
-    "$OMARCHY_TEST_LOGIN_UUID" "$OMARCHY_TEST_LOGIN_EMAIL" >"$CLAUDE_CONFIG_DIR/.claude.json"
-  echo '{"claudeAiOauth":{"rateLimitTier":"default_claude_max_5x","subscriptionType":"max"}}' >"$CLAUDE_CONFIG_DIR/.credentials.json"
+    "$OMARCHY_TEST_LOGIN_UUID" "$OMARCHY_TEST_LOGIN_EMAIL" >"$account_file"
+  echo '{"claudeAiOauth":{"rateLimitTier":"default_claude_max_5x","subscriptionType":"max"}}' >"$home/.credentials.json"
   exit 0
 fi
 echo "claude home=${CLAUDE_CONFIG_DIR:-default} args=$*"
@@ -37,12 +40,26 @@ SH
 cat >"$mock_bin/codex" <<'SH'
 #!/bin/bash
 if [[ ${1:-} == "login" ]]; then
-  "$BROWSER" "https://auth.openai.com/oauth/authorize"
+  "${BROWSER:-omarchy-test-default-browser}" "https://auth.openai.com/oauth/authorize"
   claims=$(printf '{"email":"%s","https://api.openai.com/auth":{"chatgpt_plan_type":"pro"}}' "$OMARCHY_TEST_LOGIN_EMAIL" | base64 -w0 | tr '+/' '-_' | tr -d '=')
-  printf '{"auth_mode":"chatgpt","tokens":{"account_id":"%s","id_token":"h.%s.s"}}\n' "$OMARCHY_TEST_LOGIN_UUID" "$claims" >"$CODEX_HOME/auth.json"
+  printf '{"auth_mode":"chatgpt","tokens":{"account_id":"%s","id_token":"h.%s.s"}}\n' "$OMARCHY_TEST_LOGIN_UUID" "$claims" >"${CODEX_HOME:-$HOME/.codex}/auth.json"
   exit 0
 fi
 echo "codex home=${CODEX_HOME:-default} args=$*"
+SH
+
+cat >"$mock_bin/grok" <<'SH'
+#!/bin/bash
+if [[ ${1:-} == "login" ]]; then
+  "${BROWSER:-omarchy-test-default-browser}" "https://auth.x.ai/oauth/authorize"
+  mkdir -p "${GROK_HOME:-$HOME/.grok}"
+  echo '{"token":"t"}' >"${GROK_HOME:-$HOME/.grok}/auth.json"
+fi
+SH
+
+cat >"$mock_bin/omarchy-test-default-browser" <<'SH'
+#!/bin/bash
+printf 'default %s\n' "$*" >>"$OMARCHY_TEST_BROWSER_LOG"
 SH
 
 cat >"$mock_bin/omarchy-agent-usage-update" <<'SH'
@@ -67,7 +84,7 @@ export PATH="$mock_bin:$ROOT/bin:$PATH"
 export OMARCHY_PATH="$ROOT"
 export OMARCHY_TEST_NOTIFICATIONS="$notifications"
 export OMARCHY_TEST_BROWSER_LOG="$test_tmp/browser"
-unset CLAUDE_CONFIG_DIR CODEX_HOME
+unset CLAUDE_CONFIG_DIR CODEX_HOME GROK_HOME BROWSER
 
 accounts="$XDG_STATE_HOME/omarchy/agents/accounts"
 
@@ -139,6 +156,13 @@ OMARCHY_TEST_LOGIN_UUID=u-next OMARCHY_TEST_LOGIN_EMAIL=next@example.com \
 omarchy-agent-account-remove claude next-2 </dev/null >/dev/null
 pass "account ids stay clear of routing keywords"
 
+OMARCHY_TEST_LOGIN_UUID=acct-1 OMARCHY_TEST_LOGIN_EMAIL=me@example.com \
+  omarchy-agent-account-add codex </dev/null >"$test_tmp/first-codex"
+[[ -f $HOME/.codex/auth.json && ! -d $accounts/codex ]] || fail "the first Codex account signs in to ~/.codex itself"
+grep -qx "default https://auth.openai.com/oauth/authorize" "$OMARCHY_TEST_BROWSER_LOG" ||
+  fail "the first Codex account signs in through the normal browser" "$(cat "$OMARCHY_TEST_BROWSER_LOG")"
+pass "the first account of a provider signs in to its own home in the normal browser"
+
 OMARCHY_TEST_LOGIN_UUID=acct-2 OMARCHY_TEST_LOGIN_EMAIL=side@example.com \
   omarchy-agent-account-add codex Side </dev/null >/dev/null
 [[ $(omarchy-agent-account-list codex --json | jq -c '.[0].accounts[1] | {id, email, plan}') == '{"id":"side","email":"side@example.com","plan":"Pro"}' ]] ||
@@ -147,6 +171,15 @@ OMARCHY_TEST_LOGIN_UUID=acct-2 OMARCHY_TEST_LOGIN_EMAIL=side@example.com \
 grep -qx -- "--private https://auth.openai.com/oauth/authorize" "$OMARCHY_TEST_BROWSER_LOG" ||
   fail "a Codex login opens in a private window" "$(cat "$OMARCHY_TEST_BROWSER_LOG")"
 pass "Codex accounts are added the same way"
+
+omarchy-agent-account-add grok </dev/null >/dev/null
+[[ -s $HOME/.grok/auth.json ]] && grep -qx "default https://auth.x.ai/oauth/authorize" "$OMARCHY_TEST_BROWSER_LOG" ||
+  fail "a first Grok sign-in lands in ~/.grok through the normal browser"
+if omarchy-agent-account-add grok Second </dev/null >"$test_tmp/grok-second" 2>&1; then
+  fail "a second Grok account says it isn't supported yet"
+fi
+grep -q "isn't supported yet" "$test_tmp/grok-second" || fail "a second Grok account says why it stops" "$(cat "$test_tmp/grok-second")"
+pass "Grok signs in its first account"
 
 # ---------------------------------------------------------------------- routing
 
