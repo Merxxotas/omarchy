@@ -109,8 +109,11 @@ Panel {
     var parts = []
     if (String(account.email || "") !== "") parts.push(account.email)
     if (String(account.plan || "") !== "") parts.push(account.plan)
-    if (account.stale === true)
-      parts.push(String(account.usageStatusText || "") !== "" ? account.usageStatusText + " · last known" : "Last known")
+    if (account.stale === true) {
+      var ageMs = Number(account.fetchedAt) > 0 ? nowMs - Number(account.fetchedAt) : 0
+      var age = ageMs > 60000 ? "as of " + formatDuration(ageMs) + " ago" : "last known"
+      parts.push(String(account.usageStatusText || "") !== "" ? account.usageStatusText + " · " + age : age)
+    }
     return parts.join(" · ")
   }
 

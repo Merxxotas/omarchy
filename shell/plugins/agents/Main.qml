@@ -119,8 +119,9 @@ Item {
 
   // A fifteen-minute interval can't catch an account crossing its switch
   // threshold, so while any provider with several accounts has its active one
-  // at 80% or more, the limits are checked every minute. Those runs reuse the
-  // transcript scans; only the limits probes are new.
+  // at 80% or more, the limits are checked every three minutes. Those runs
+  // reuse the transcript scans; only the limits probes are new, and any more
+  // often than this Anthropic starts refusing them.
   readonly property bool nearLimit: {
     var rev = dataRevision
     for (var i = 0; i < agents.length; i++) {
@@ -134,7 +135,7 @@ Item {
   }
 
   Timer {
-    interval: root.nearLimit ? Math.min(60, root.refreshIntervalSec) * 1000 : root.refreshIntervalSec * 1000
+    interval: root.nearLimit ? Math.min(180, root.refreshIntervalSec) * 1000 : root.refreshIntervalSec * 1000
     running: true
     repeat: true
     triggeredOnStart: true
