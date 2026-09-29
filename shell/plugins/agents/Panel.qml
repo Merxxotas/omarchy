@@ -178,7 +178,7 @@ Panel {
   readonly property var starterPrompts: [
     { glyph: "󰏘", label: "Theme", prompt: "Make me a new Omarchy theme. Ask me what look or inspiration I have in mind, then build it following the Omarchy skill's theming guide and switch to it." },
     { glyph: "󰐱", label: "Plugin", prompt: "Make me a new Omarchy shell plugin. Ask me what I'd like it to do, then build it following the Omarchy skill's plugin guide and enable it." },
-    { glyph: "󰣆", label: "App", prompt: "Make me a new app for my Omarchy desktop. Ask me what it should do, then build it and add it to the app launcher." }
+    { glyph: "󰣆", label: "App", prompt: "Make me a new app for my Omarchy desktop. Ask me what it should do, then build it following the omarchy-app skill and install it so it shows up in the app launcher." }
   ]
 
   function startPrompt(prompt) {
