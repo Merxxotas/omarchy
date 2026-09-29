@@ -35,8 +35,8 @@ PROVIDERS = {
   "claude": {
     "name": "Claude",
     # Everything a session reads or writes that isn't tied to the login. A
-    # missing directory is created in the primary home first so the link
-    # isn't dangling; a missing file is left alone until it exists.
+    # missing directory is created in the primary home first; a missing file
+    # is linked anyway, so whichever account writes it first writes it there.
     "shared_dirs": ["projects", "skills", "agents", "commands", "plugins", "hooks", "themes", "output-styles", "file-history", "todos", "plans"],
     "shared_files": ["settings.json", "CLAUDE.md", "history.jsonl", "keybindings.json"],
     # Keys copied from the primary's ~/.claude.json into a new account's, so a
@@ -263,7 +263,7 @@ def link_shared(provider: str, home: Path) -> None:
     (primary / name).mkdir(parents=True, exist_ok=True)
   for name in spec["shared_dirs"] + spec["shared_files"]:
     target = home / name
-    if target.exists() or target.is_symlink() or not (primary / name).exists():
+    if target.exists() or target.is_symlink():
       continue
     target.symlink_to(primary / name)
 
@@ -534,6 +534,10 @@ def decide(registry: dict[str, Any], usage: dict[str, Any], now: dt.datetime) ->
 
   alert = f"exhausted:{current['id']}"
   if registry.get("alert") == alert or len(registry["accounts"]) < 2:
+    return None
+  # Only when every account is known to be over. One that's signed out or
+  # couldn't be checked might have room, so there's nothing honest to say.
+  if any(peak(usage.get(a["id"]), now) is None for a in registry["accounts"]):
     return None
   soonest = None
   for account in registry["accounts"]:

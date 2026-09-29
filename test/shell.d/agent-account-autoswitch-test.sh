@@ -146,3 +146,12 @@ jq '.accounts[1].usageStatusText = "Waiting for auth"' "$usage/claude.json" >"$t
 mv "$test_tmp/record.json" "$usage/claude.json"
 [[ -z $(autoswitch) && $(active) == "main" ]] || fail "a signed-out account is never switched to"
 pass "a signed-out account is never switched to"
+
+# With another account unknown, nobody can say every account is over.
+registry main auto
+record 0.97 "$later" 0.98 "$soon"
+jq '.accounts[1].usageStatusText = "Waiting for auth"' "$usage/claude.json" >"$test_tmp/record.json"
+mv "$test_tmp/record.json" "$usage/claude.json"
+autoswitch >/dev/null
+[[ ! -s $notifications ]] || fail "an unknown account keeps exhaustion unsaid" "$(cat "$notifications")"
+pass "exhaustion is only said when every account is known to be over"
