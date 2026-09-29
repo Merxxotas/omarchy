@@ -1499,7 +1499,7 @@ Panel {
         radius: width / 2
         anchors.verticalCenter: meterTrack.verticalCenter
         x: root.clamp(meterTrack.width * root.clamp(Number(modelData.percent), 0, 1) - width / 2, 0, meterTrack.width - width)
-        color: Number(modelData.percent) >= 0.9 ? root.urgent : Color.accent
+        color: meter.alarming ? root.urgent : root.foreground
       }
     }
   }
