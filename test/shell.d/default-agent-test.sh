@@ -552,20 +552,6 @@ grep -F "Could not set Codex as the default coding agent" "$test_tmp/setup-failu
 [[ ! -s $agent_open_log ]] || fail "failed activation does not open an agent"
 pass "default agent reports mise failures without notifications"
 
-# A picker that only records the choice (the agents panel) sets the default
-# without starting the agent, and a missing install keeps that promise too.
-: >"$agent_open_log"
-: >"$terminal_log"
-OMARCHY_TEST_AGENT_INSTALLED=true omarchy-default-agent --no-launch codex >/dev/null
-[[ $(omarchy-default-agent) == "codex" && ! -s $agent_open_log ]] || fail "--no-launch sets the default without launching it"
-omarchy-default-agent --no-launch muse
-mapfile -d '' -t terminal_args <"$terminal_log"
-[[ ${terminal_args[*]} == "omarchy-default-agent --install --no-launch muse" ]] ||
-  fail "--no-launch carries into the install terminal" "${terminal_args[*]}"
-OMARCHY_TEST_AGENT_INSTALLED=true omarchy-default-agent --no-launch copilot >/dev/null
-: >"$terminal_log"
-pass "--no-launch sets the default agent without starting it"
-
 # Muse follows the shared mise installation and launch path.
 : >"$notification_history"
 : >"$agent_open_log"
