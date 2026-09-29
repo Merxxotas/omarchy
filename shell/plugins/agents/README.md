@@ -21,9 +21,9 @@ cross-device aggregation); `Agent.qml` is the per-record file watcher.
 - **Accounts** — with more than one Claude or Codex subscription account
   (see `omarchy agent account`), the limits become one block per account:
   name, email, plan, and a compact line per window with its meter,
-  percentage, and time to reset. An accent rail and an _ACTIVE_ label mark
-  the account new sessions start as; the others get a quiet rail and a _Use_
-  link. Hovering Use also reveals Autoswitch, which moves new sessions over
+  percentage, and time to reset, with separators between accounts. An
+  _ACTIVE_ label marks the account new sessions start as; the others get a
+  _Use_ link. Hovering Use also reveals Autoswitch, which moves new sessions over
   on their own once the active account reaches its threshold; it stays lit
   while on, and clicking it again goes back to notifying. Click a name to
   rename the account in place. A sign-in that needs attention shows in the

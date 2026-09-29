@@ -686,44 +686,40 @@ Panel {
             width: parent.width
             spacing: Style.space(16)
 
-            // The active account wears the accent rail; the others a quiet
-            // one, so the accounts read as a list without boxing each in.
+            // Accounts are split by the panel's ordinary separators; ACTIVE
+            // marks the one new sessions use.
             Repeater {
               model: root.accounts
 
-              Item {
-                id: railAccount
+              Column {
+                id: accountBlock
                 required property var modelData
                 required property int index
                 width: accountsSection.width
-                implicitHeight: railBody.implicitHeight
+                spacing: Style.space(16)
 
-                Rectangle {
-                  width: Style.space(3)
-                  height: parent.height
-                  radius: width / 2
-                  color: railAccount.modelData.active === true ? Color.accent : root.track
+                PanelSeparator {
+                  visible: accountBlock.index > 0
+                  foreground: root.foreground
                 }
 
                 Column {
-                  id: railBody
-                  anchors.left: parent.left
-                  anchors.leftMargin: Style.space(14)
-                  anchors.right: parent.right
+                  id: accountBody
+                  width: parent.width
                   spacing: Style.space(8)
 
                   AccountHeader {
                     width: parent.width
-                    account: railAccount.modelData
-                    picked: railAccount.index === root.accountCursor
+                    account: accountBlock.modelData
+                    picked: accountBlock.index === root.accountCursor
                   }
 
                   Repeater {
-                    model: root.limitWindows({ limits: railAccount.modelData.limits || [] })
+                    model: root.limitWindows({ limits: accountBlock.modelData.limits || [] })
 
                     CompactLimit {
                       required property var modelData
-                      width: railBody.width
+                      width: accountBody.width
                       window: modelData
                     }
                   }
