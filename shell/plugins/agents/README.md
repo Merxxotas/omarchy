@@ -9,40 +9,33 @@ cross-device aggregation); `Agent.qml` is the per-record file watcher.
 
 ## Panel
 
-- **Hero** — the mark, the tool, and the plan it runs on ("Max 20x", "Pro").
-  Auth and endpoint problems replace the plan line and repeat in a card.
-- **Subscription switch** — the hero's top-right corner holds a small mark
-  per enabled agent, the selected one at full strength (`h`/`l` or click).
-  They appear only when more than one agent is enabled. A + before them
-  opens _Setup > Agent Accounts > Add Account_ to add a Claude, Codex, or
-  Grok subscription.
-- **Limits** — the percentage of each allowance used, a matching meter, and
-  the time until the session or weekly window resets.
-- **Accounts** — with more than one Claude or Codex subscription account
-  (see `omarchy agent account`), the limits become one block per account:
-  name, email, plan, and a compact line per window with its meter,
-  percentage, and time to reset, with separators between accounts. An
-  _ACTIVE_ label marks the account new sessions start as; the others get a
-  _Use_ link. Hovering Use also reveals Autoswitch, which moves new sessions over
-  on their own once the active account reaches its threshold; it stays lit
-  while on, and clicking it again goes back to notifying. Click a name to
-  rename the account in place. A sign-in that needs attention shows in the
-  urgent color.
-- **Balance** — prepaid agents report a credit ledger instead of limits:
-  remaining credit, a fuel-gauge meter that drains toward empty, and
-  funded-versus-spent detail.
-- **Tokens by day** — one row per day for the last week: day, bar, tokens, with today
-  bolded at the bottom. Hover today for its prompt and session count.
-- **Tokens by model** — tokens per model with the bar behind each row scaled
-  to the heaviest model,
-  the same way the weekly chart scales to its busiest day. Hover for the
-  input / output / cache split.
+Every subscription on one page, limits first.
 
-A subscription appears only when it is enabled in settings and has actually
-recorded usage — on this machine or on a synced one. With one such agent
-there are no marks to switch between; with none, the module leaves the bar entirely
-rather than sitting there with nothing to say. A CLI installed mid-session
-shows up at the next refresh, so nothing polls the disk waiting for it.
+- **Hero** — the agents robot, and a line that rotates through what the
+  token counts add up to across every agent: tokens this week and today, the
+  most used model, the busiest day, and today's prompts and sessions. A + on
+  the right opens _Setup > Agent Accounts > Add Account_ to add a Claude,
+  Codex, or Grok subscription.
+- **One section per agent** — its mark, name, and plan, then a compact line
+  per limit window: its meter, the percentage used, and the time until it
+  resets. Sign-in and endpoint trouble shows under the name in the urgent
+  color.
+- **Accounts** — an agent with more than one subscription account (see
+  `omarchy agent account`) lists each: name, email, plan, and its own limit
+  lines. An _ACTIVE_ label marks the account new sessions start as; the
+  others get a _Use_ link. Hovering Use also reveals Autoswitch, which moves
+  new sessions over on their own once the active account reaches its
+  threshold; it stays lit while on, and clicking it again goes back to
+  notifying. Click a name to rename the account in place.
+- **Balance** — prepaid agents show a credit ledger instead of limits: a
+  fuel-gauge meter that drains toward empty, the remaining credit, and
+  funded-versus-spent detail.
+
+An agent appears only when it is enabled in settings and has actually
+recorded usage — on this machine or on a synced one. With none, the module
+leaves the bar entirely rather than sitting there with nothing to say. A CLI
+installed mid-session shows up at the next refresh, so nothing polls the disk
+waiting for it.
 
 That self-hiding is why the widget ships in the default bar layout: a machine
 that has never run an AI coding agent draws nothing, and the icon arrives on
@@ -120,14 +113,17 @@ only adds the meter and the spent-of-funded line under the real figure.
 
 ## Interactions
 
-- Bar icon: left = panel, right = launch agent, middle = next subscription.
-- Panel: `h`/`l` switch subscription, `j`/`k` scroll, `r` or Enter refresh,
-  Tab moves to the neighboring bar panel, Esc closes.
-- Accounts: `1`–`9` pick an account and Enter makes it active (picking
-  alone never switches), `a` adds a subscription, `m` toggles automatic
-  switching. While a provider with several accounts has its active one at 80%
-  or more of any window, the limits refresh every minute.
-- IPC: `omarchy-shell omarchy.agents <open|close|toggle|refresh|next>`.
+- Bar icon: left = panel, right = launch agent, middle = refresh. It turns
+  urgent when any account new sessions use is at 90% of a window, or a
+  prepaid balance is down to its last 10%.
+- Panel: `j`/`k` scroll, `r` or Enter refresh, Tab moves to the neighboring
+  bar panel, Esc closes.
+- Accounts: `1`–`9` pick an account across every agent and Enter makes it
+  active (picking alone never switches), `a` adds a subscription, `m`
+  toggles automatic switching for the picked account's agent. While an agent
+  with several accounts has its active one at 80% or more of any window, the
+  limits refresh every three minutes.
+- IPC: `omarchy-shell omarchy.agents <open|close|toggle|refresh>`.
 
 ## Settings
 

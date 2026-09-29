@@ -18,67 +18,54 @@ Panel {
   readonly property color track: Style.selectedFillFor(foreground, Color.accent)
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
 
+  // Every subscription on one page, limits first: the question this panel
+  // answers is how much room is left, and where.
   readonly property var providers: usage.enabledProviders
-  // The selection follows the provider, not the slot it happens to sit in: a
-  // provider whose first scan lands while the panel is open would otherwise
-  // shift the list underneath you and swap out what you were reading.
-  property string selectedProviderId: ""
-  readonly property int providerIndex: {
-    for (var i = 0; i < providers.length; i++)
-      if (providers[i].providerId === selectedProviderId) return i
-    return 0
-  }
-  readonly property var provider: providers.length > 0 ? providers[providerIndex] : null
 
   property bool cursorActive: false
 
-  // Countdowns and "updated" read this instead of Date.now() so the
+  // Countdowns and "as of" ages read this instead of Date.now() so the
   // panel keeps telling the truth while it sits open.
   property double nowMs: Date.now()
 
-  readonly property var limits: limitWindows(provider)
-  // Several subscriptions for this provider: each one's limits get a card, and
-  // one of them is where new sessions go.
-  readonly property var accounts: provider && Array.isArray(provider.accounts) ? provider.accounts : []
-  readonly property bool multiAccount: accounts.length > 1
-  // The account card the keyboard has picked. Picking only looks; Enter on a
-  // picked card is what moves new sessions, so reading never switches.
+  // Every account of every provider that has more than one, in page order.
+  // The keyboard picks one by its position; picking only looks, and Enter on
+  // a picked account is what moves new sessions to it.
+  readonly property var accountEntries: {
+    var out = []
+    for (var i = 0; i < providers.length; i++) {
+      var list = providerAccounts(providers[i])
+      if (list.length < 2) continue
+      for (var j = 0; j < list.length; j++) out.push({ provider: providers[i], account: list[j] })
+    }
+    return out
+  }
   property int accountCursor: -1
-  readonly property var models: modelRows(provider)
-  readonly property var headline: bindingWindow(provider)
-  readonly property var balance: provider ? (provider.balance || null) : null
-  // A prepaid account runs low the way a subscription window fills up: the
-  // last 10% of the funded credits lights the same alarm.
-  readonly property bool balanceAlarming: !!balance && balance.funded > 0
-    && balance.remaining / balance.funded <= 0.1
-  readonly property bool alarming: (!!headline && headline.percent >= 0.9) || balanceAlarming
+  readonly property var pickedEntry: accountCursor >= 0 && accountCursor < accountEntries.length ? accountEntries[accountCursor] : null
+
+  // The bar icon lights up when any account new sessions use is nearly out,
+  // or a prepaid balance is down to its last 10%.
+  readonly property bool alarming: {
+    for (var i = 0; i < providers.length; i++) {
+      var window = bindingWindow(providers[i])
+      if (window && window.percent >= 0.9) return true
+      if (balanceAlarming(providers[i].balance)) return true
+    }
+    return false
+  }
 
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)) }
   function alpha(c, a) { return Qt.rgba(c.r, c.g, c.b, a) }
 
-  function selectProvider(index) {
-    if (providers.length === 0) return
-    var wrapped = ((index % providers.length) + providers.length) % providers.length
-    selectedProviderId = providers[wrapped].providerId
+  // A provider's accounts, when it has any. The list arrives as a sequence
+  // rather than a JS array once it has passed through a model, so it's
+  // judged by its length.
+  function providerAccounts(p) {
+    return p && p.accounts && p.accounts.length > 0 ? p.accounts : []
   }
 
   function refreshNow() {
     usage.refreshAll(true)
-  }
-
-  function renameAccount(account, label) {
-    if (!provider || !account) return
-    Util.execArgv(["omarchy-agent-account-rename", provider.providerId, String(account.id), label])
-  }
-
-  // Hands the keyboard back to the panel after an inline edit.
-  function focusKeys() {
-    keyCatcher.forceActiveFocus()
-  }
-
-  function useAccount(account) {
-    if (!provider || !account || account.active) return
-    Util.execArgv(["omarchy-agent-account-use", provider.providerId, String(account.id)])
   }
 
   function addAccount() {
@@ -86,23 +73,52 @@ Panel {
     Util.execArgv(["omarchy-menu", "summon", "setup.accounts.add"])
   }
 
-  readonly property bool autoSwitch: !!provider && !!provider.accountSwitch && provider.accountSwitch.mode === "auto"
-
-  function toggleSwitchMode() {
-    setSwitchMode(autoSwitch ? "manual" : "auto")
+  function renameAccount(p, account, label) {
+    if (!p || !account) return
+    Util.execArgv(["omarchy-agent-account-rename", p.providerId, String(account.id), label])
   }
 
-  function setSwitchMode(mode) {
-    if (!multiAccount || mode === (autoSwitch ? "auto" : "manual")) return
+  function useAccount(p, account) {
+    if (!p || !account || account.active) return
+    Util.execArgv(["omarchy-agent-account-use", p.providerId, String(account.id)])
+  }
+
+  function autoSwitchFor(p) {
+    return !!p && !!p.accountSwitch && p.accountSwitch.mode === "auto"
+  }
+
+  function switchThreshold(p) {
+    return p && p.accountSwitch ? Number(p.accountSwitch.threshold || 95) : 95
+  }
+
+  function setSwitchMode(p, mode) {
+    if (!p || providerAccounts(p).length < 2 || mode === (autoSwitchFor(p) ? "auto" : "manual")) return
     Util.execArgv(["bash", "-c", 'omarchy-agent-account-mode "$1" "$2" >/dev/null && omarchy-agent-usage-update --limits-only "$1"',
-                   "omarchy-agent-account-mode", provider.providerId, mode])
+                   "omarchy-agent-account-mode", p.providerId, mode])
+  }
+
+  // `m` flips autoswitch for the picked account's provider, or the first
+  // provider with several accounts when nothing is picked.
+  function toggleSwitchMode() {
+    var p = pickedEntry ? pickedEntry.provider : (accountEntries.length > 0 ? accountEntries[0].provider : null)
+    if (p) setSwitchMode(p, autoSwitchFor(p) ? "manual" : "auto")
   }
 
   function activateSelection() {
-    if (multiAccount && accountCursor >= 0 && accountCursor < accounts.length && !accounts[accountCursor].active)
-      useAccount(accounts[accountCursor])
+    if (pickedEntry && !pickedEntry.account.active)
+      useAccount(pickedEntry.provider, pickedEntry.account)
     else
       refreshNow()
+  }
+
+  function isPicked(p, account) {
+    return !!pickedEntry && !!p && !!account
+      && pickedEntry.provider.providerId === p.providerId && pickedEntry.account.id === account.id
+  }
+
+  // Hands the keyboard back to the panel after an inline edit.
+  function focusKeys() {
+    keyCatcher.forceActiveFocus()
   }
 
   function accountDetail(account) {
@@ -117,8 +133,9 @@ Panel {
     return parts.join(" · ")
   }
 
-  function switchThreshold(p) {
-    return p && p.accountSwitch ? Number(p.accountSwitch.threshold || 95) : 95
+  function planLabel(p) {
+    var tier = String(p && p.tierLabel || "")
+    return tier === "" ? "" : tier.charAt(0).toUpperCase() + tier.slice(1)
   }
 
   function launchAgent() {
@@ -130,7 +147,7 @@ Panel {
   //
   // Both providers report the same two shapes: a short rolling session window
   // and a long weekly one. Everything below normalizes them into one record so
-  // the meters and the hero speak a single language.
+  // the meters speak a single language.
 
   // Claude spells its windows out ("Session (5-hour)"), Codex abbreviates
   // them ("5h window", "30m window"). Both have to land on the same record.
@@ -215,6 +232,12 @@ Panel {
   // Prepaid agents report a credit ledger instead of rate-limit windows: the
   // record's balance object carries remaining, funded, and spent amounts.
 
+  // A prepaid account runs low the way a subscription window fills up: the
+  // last 10% of the funded credits lights the same alarm.
+  function balanceAlarming(b) {
+    return !!b && b.funded > 0 && b.remaining / b.funded <= 0.1
+  }
+
   function currencyPrefix(currency) {
     var code = String(currency || "USD").toUpperCase()
     if (code === "USD") return "$"
@@ -236,96 +259,74 @@ Panel {
     return text
   }
 
-  // ---------------------------------------------------------------- content
+  // ---------------------------------------------------------------- summary
+  //
+  // The hero's line rotates through what the token counts add up to across
+  // every agent, now that they no longer get charts of their own.
 
-  // The plan you pay for, under the name of the tool it pays for. Limits live
-  // in their own section; the hero just says what this is.
-  function heroMeta(p) {
-    if (!p) return ""
-    if (String(p.usageStatusText || "") !== "") return p.usageStatusText
-    var tier = String(p.tierLabel || "")
-    if (tier === "") return "Subscription"
-    return tier.charAt(0).toUpperCase() + tier.slice(1)
-  }
+  readonly property var summaryPhrases: {
+    var rev = usage.dataRevision
+    var week = 0
+    var today = 0
+    var prompts = 0
+    var sessions = 0
+    var byDay = {}
+    var byModel = {}
+    for (var i = 0; i < providers.length; i++) {
+      var p = providers[i]
+      var days = p.recentDays || []
+      for (var d = 0; d < days.length; d++) {
+        var tokens = Number(days[d].messageCount || 0)
+        week += tokens
+        byDay[days[d].date] = (byDay[days[d].date] || 0) + tokens
+      }
+      today += Number(p.todayTotalTokens || 0)
+      if (p.hasPromptStats !== false) {
+        prompts += Number(p.todayPrompts || 0)
+        sessions += Number(p.todaySessions || 0)
+      }
+      var models = p.modelUsage || {}
+      for (var id in models) {
+        var bucket = models[id] || {}
+        var total = Number(bucket.inputTokens || 0) + Number(bucket.outputTokens || 0)
+          + Number(bucket.cacheReadInputTokens || 0) + Number(bucket.cacheCreationInputTokens || 0)
+        var name = usage.friendlyModelName(id)
+        byModel[name] = (byModel[name] || 0) + total
+      }
+    }
 
-  // Local calendar date, recomputed from nowMs so a panel left open across
-  // midnight moves the "Today" row with the clock.
-  function todayDate() {
-    var now = new Date(root.nowMs)
-    return now.getFullYear()
-      + "-" + String(now.getMonth() + 1).padStart(2, "0")
-      + "-" + String(now.getDate()).padStart(2, "0")
+    var phrases = []
+    if (week > 0) phrases.push(usage.formatTokenCount(week) + " tokens this week")
+    if (today > 0) phrases.push(usage.formatTokenCount(today) + " tokens today")
+    var topModel = ""
+    for (var model in byModel) if (topModel === "" || byModel[model] > byModel[topModel]) topModel = model
+    if (topModel !== "" && byModel[topModel] > 0) phrases.push("Mostly " + topModel)
+    var busiest = ""
+    for (var date in byDay) if (busiest === "" || byDay[date] > byDay[busiest]) busiest = date
+    if (busiest !== "" && byDay[busiest] > 0) phrases.push("Busiest day: " + dayName(busiest))
+    if (prompts > 0) phrases.push(prompts + " prompt" + (prompts === 1 ? "" : "s") + " today")
+    if (sessions > 0) phrases.push(sessions + " session" + (sessions === 1 ? "" : "s") + " today")
+    return phrases
   }
+  property int phraseIndex: 0
+  readonly property string heroPhrase: summaryPhrases.length > 0
+    ? summaryPhrases[phraseIndex % summaryPhrases.length]
+    : (providers.length > 0 ? "Subscriptions" : "No usage yet")
 
   function dayName(date) {
     var parsed = new Date(String(date || "") + "T00:00:00")
     if (isNaN(parsed.getTime())) return String(date || "")
-    return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][parsed.getDay()]
-  }
-
-  function dayLabel(date, today) {
-    if (today) return "Today"
-    return dayName(date)
-  }
-
-  function dayTooltip(day, today) {
-    if (!day) return ""
-    var parsed = new Date(String(day.date) + "T00:00:00")
-    var label = isNaN(parsed.getTime())
-      ? String(day.date)
-      : dayName(day.date) + " " + (parsed.getMonth() + 1) + "/" + parsed.getDate()
-    var text = label + " · " + usage.formatTokenCount(Number(day.messageCount || 0)) + " tokens"
-    // Prompt and session counts only exist for today, so they ride along here
-    // instead of taking a section of their own. Billing-API agents never
-    // count prompts, and "0 prompts" would read as a quiet day, not a gap.
-    if (today && provider && provider.hasPromptStats !== false)
-      text += " · " + Number(provider.todayPrompts || 0) + " prompts · "
-        + Number(provider.todaySessions || 0) + " sessions"
-    return text
-  }
-
-  function weekPeak(p) {
-    var days = p ? (p.recentDays || []) : []
-    var peak = 0
-    for (var i = 0; i < days.length; i++) peak = Math.max(peak, Number(days[i].messageCount || 0))
-    return peak
-  }
-
-  function modelRows(p) {
-    var usageByModel = p ? (p.modelUsage || {}) : {}
-    var rows = []
-    for (var id in usageByModel) {
-      var bucket = usageByModel[id] || {}
-      var input = Number(bucket.inputTokens || 0)
-      var output = Number(bucket.outputTokens || 0)
-      var cacheRead = Number(bucket.cacheReadInputTokens || 0)
-      var cacheWrite = Number(bucket.cacheCreationInputTokens || 0)
-      rows.push({
-        name: usage.friendlyModelName(id),
-        total: input + output + cacheRead + cacheWrite,
-        input: input,
-        output: output,
-        cacheRead: cacheRead,
-        cacheWrite: cacheWrite
-      })
-    }
-    rows.sort(function(a, b) { return b.total - a.total })
-    return rows.slice(0, 4)
-  }
-
-  function modelTooltip(row) {
-    if (!row) return ""
-    return "In " + usage.formatTokenCount(row.input)
-      + " · out " + usage.formatTokenCount(row.output)
-      + " · cache read " + usage.formatTokenCount(row.cacheRead)
-      + " · cache write " + usage.formatTokenCount(row.cacheWrite)
+    return ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][parsed.getDay()]
   }
 
   // Only speaks up when the numbers cover more than this machine.
   function footerText() {
     if (usage.syncStatusText !== "") return usage.syncStatusText
-    if (provider && provider.syncEnabled && provider.syncDeviceCount > 0)
-      return "Merged from " + provider.syncDeviceCount + " device" + (provider.syncDeviceCount === 1 ? "" : "s")
+    for (var i = 0; i < providers.length; i++) {
+      var count = Number(providers[i].syncDeviceCount || 0)
+      if (providers[i].syncEnabled && count > 0)
+        return "Merged from " + count + " device" + (count === 1 ? "" : "s")
+    }
     return ""
   }
 
@@ -363,10 +364,6 @@ Panel {
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
 
-  onProviderIndexChanged: {
-    accountCursor = -1
-    if (panelFlick) panelFlick.contentY = 0
-  }
   onOpenedChanged: if (opened) {
     cursorActive = false
     accountCursor = -1
@@ -390,6 +387,28 @@ Panel {
     onTriggered: root.nowMs = Date.now()
   }
 
+  Timer {
+    interval: 2800
+    running: root.opened && root.summaryPhrases.length > 1
+    repeat: true
+    onTriggered: phraseSwap.restart()
+  }
+
+  SequentialAnimation {
+    id: phraseSwap
+    PropertyAnimation {
+      target: hero; property: "metaOpacity"
+      to: 0.0; duration: Style.duration(180); easing.type: Easing.OutQuad
+    }
+    ScriptAction {
+      script: root.phraseIndex = (root.phraseIndex + 1) % Math.max(1, root.summaryPhrases.length)
+    }
+    PropertyAnimation {
+      target: hero; property: "metaOpacity"
+      to: 1.0; duration: Style.duration(260); easing.type: Easing.InQuad
+    }
+  }
+
   ShellIpc {
     target: root.ipcTarget
     function open(): void { root.open() }
@@ -398,7 +417,6 @@ Panel {
     function hide(): void { root.close() }
     function toggle(): void { root.toggle() }
     function refresh(): string { root.refreshNow(); return "ok" }
-    function next(): string { root.selectProvider(root.providerIndex + 1); return "ok" }
   }
 
   BarIconButton {
@@ -409,7 +427,7 @@ Panel {
     active: root.alarming
     onPressed: function(buttonCode) {
       if (buttonCode === Qt.RightButton) root.launchAgent()
-      else if (buttonCode === Qt.MiddleButton) root.selectProvider(root.providerIndex + 1)
+      else if (buttonCode === Qt.MiddleButton) root.refreshNow()
       else root.toggle()
     }
   }
@@ -422,8 +440,6 @@ Panel {
     open: root.opened
     focusTarget: keyCatcher
     contentWidth: panel.fittedContentWidth(Style.space(380))
-    // Taller than the control panels on purpose: this one is a dashboard, and
-    // the whole point is reading limits and history without scrolling.
     contentHeight: panel.fittedContentHeight(column.implicitHeight, Style.space(640))
 
     PanelKeyCatcher {
@@ -431,10 +447,6 @@ Panel {
       anchors.fill: parent
 
       onMoveRequested: function(dx, dy) {
-        if (dx !== 0) {
-          root.cursorActive = true
-          root.selectProvider(root.providerIndex + dx)
-        }
         if (dy !== 0)
           panelFlick.contentY = root.clamp(panelFlick.contentY + dy * Style.space(56), 0,
                                            Math.max(0, panelFlick.contentHeight - panelFlick.height))
@@ -446,7 +458,7 @@ Panel {
         if (t === "r" || t === "R") root.refreshNow()
         else if (t === "a" || t === "A") root.addAccount()
         else if (t === "m" || t === "M") root.toggleSwitchMode()
-        else if (t >= "1" && t <= "9" && Number(t) <= root.accounts.length) root.accountCursor = Number(t) - 1
+        else if (t >= "1" && t <= "9" && Number(t) <= root.accountEntries.length) root.accountCursor = Number(t) - 1
       }
 
       Flickable {
@@ -465,90 +477,36 @@ Panel {
 
         Column {
           id: column
+          // When the panel scrolls, the bar gets its own strip rather than
+          // sitting on top of the right-aligned numbers.
           width: panelFlick.width - (panelFlick.interactive ? panelScroll.width + Style.space(6) : 0)
           spacing: Style.space(12)
 
-          // ---------- Hero: provider mark · name · plan ----------
+          // ---------- Hero: agents · rotating summary · add ----------
           PanelHero {
             id: hero
-            visible: !!root.provider
             width: parent.width
-            title: root.provider ? root.provider.providerName : ""
-            meta: root.heroMeta(root.provider)
-
-            // One small mark per provider to switch between them (the
-            // selected one at full strength), and + to add an account.
-            trailingControl: Component {
-              Row {
-                spacing: Style.space(12)
-
-                TextLink {
-                  tooltip: "Add a subscription"
-                  anchors.verticalCenter: parent.verticalCenter
-                  text: "+"
-                  font.pixelSize: Style.font.heading
-                  onClicked: root.addAccount()
-                }
-
-                Repeater {
-                  model: root.providers.length > 1 ? root.providers : []
-
-                  ProviderMark {
-                    required property var modelData
-                    required property int index
-                    anchors.verticalCenter: parent.verticalCenter
-                    provider: modelData
-                    selected: index === root.providerIndex
-                    onClicked: {
-                      root.cursorActive = true
-                      root.selectProvider(index)
-                    }
-                  }
-                }
-
-              }
-            }
+            title: "Agents"
+            meta: root.heroPhrase
             foreground: root.foreground
             fontFamily: root.fontFamily
 
             iconComponent: Component {
-              Item {
-                id: heroMark
-                property var candidates: root.iconCandidatesForProvider(root.provider, root.surface)
-                // Provider objects are rebuilt on every refresh, which churns the
-                // array's identity without changing its content. Restart the fallback
-                // walk only when the URLs change: re-pointing source at a URL whose
-                // load already failed emits no statusChanged, so an identity-only
-                // reset would strand the walker on a missing -light twin.
-                property string candidatesKey: candidates.join("\n")
-                property int candidateIndex: 0
-                onCandidatesKeyChanged: candidateIndex = 0
+              Text {
+                textFormat: Text.PlainText
+                text: button.text
+                color: root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.display
+              }
+            }
 
-                width: Style.font.display
-                height: Style.font.display
-
-                Image {
-                  id: heroMarkImage
-                  anchors.fill: parent
-                  source: heroMark.candidateIndex < heroMark.candidates.length ? heroMark.candidates[heroMark.candidateIndex] : ""
-                  sourceSize.width: Style.font.display * 2
-                  sourceSize.height: Style.font.display * 2
-                  fillMode: Image.PreserveAspectFit
-                  // Advancing source from inside its own status change trips the
-                  // binding-loop detector; defer the step one tick.
-                  onStatusChanged: if (status === Image.Error && heroMark.candidateIndex < heroMark.candidates.length)
-                    Qt.callLater(function() { heroMark.candidateIndex++ })
-                }
-
-                Text {
-                  textFormat: Text.PlainText
-                  anchors.centerIn: parent
-                  visible: heroMarkImage.status !== Image.Ready
-                  text: button.text
-                  color: root.foreground
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.display
-                }
+            trailingControl: Component {
+              TextLink {
+                text: "+"
+                font.pixelSize: Style.font.heading
+                tooltip: "Add a subscription"
+                onClicked: root.addAccount()
               }
             }
           }
@@ -565,241 +523,13 @@ Panel {
             wrapMode: Text.WordWrap
           }
 
-          // ---------- Status ----------
-          BorderSurface {
-            visible: !!root.provider && String(root.provider.usageStatusText || "") !== ""
-            width: parent.width
-            implicitHeight: statusText.implicitHeight + Style.spacing.xl * 2
-            color: root.alpha(root.urgent, 0.10)
-            borderSpec: Border.flat(root.alpha(root.urgent, 0.35), 1)
-            radius: Style.cornerRadius
+          Repeater {
+            model: root.providers
 
-            Text {
-              id: statusText
-              textFormat: Text.PlainText
-              anchors.left: parent.left
-              anchors.right: parent.right
-              anchors.verticalCenter: parent.verticalCenter
-              anchors.leftMargin: Style.space(12)
-              anchors.rightMargin: Style.space(12)
-              text: root.provider ? String(root.provider.authHelpText || "") : ""
-              color: root.dim
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
-              wrapMode: Text.WordWrap
-            }
-          }
-
-          // ---------- Balance / limits ----------
-          PanelSeparator {
-            visible: balanceSection.visible || limitsSection.visible || accountsSection.visible
-            foreground: root.foreground
-          }
-
-          Column {
-            id: balanceSection
-            visible: !!root.balance
-            width: parent.width
-            spacing: Style.space(10)
-
-            // The meter shows what is left, not what is used: a prepaid
-            // account drains toward empty rather than filling toward a cap.
-            readonly property real ratio: root.balance && root.balance.funded > 0
-              ? root.clamp(root.balance.remaining / root.balance.funded, 0, 1)
-              : -1
-
-            PanelSectionHeader {
-              width: parent.width
-              text: "BALANCE"
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-            }
-
-            Item {
-              width: parent.width
-              implicitHeight: Math.max(balanceLabel.implicitHeight, balanceValue.implicitHeight)
-
-              Text {
-                id: balanceLabel
-                text: "Prepaid credits"
-                color: root.foreground
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.body
-                anchors.left: parent.left
-                anchors.verticalCenter: parent.verticalCenter
-              }
-
-              Text {
-                id: balanceValue
-                textFormat: Text.PlainText
-                text: root.balance ? root.formatMoney(root.balance.remaining, root.balance.currency) : ""
-                color: root.balanceAlarming ? root.urgent : root.foreground
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
-                anchors.right: parent.right
-                anchors.verticalCenter: parent.verticalCenter
-              }
-            }
-
-            Meter {
-              visible: balanceSection.ratio >= 0
-              width: parent.width
-              value: balanceSection.ratio
-              alarming: root.balanceAlarming
-            }
-
-            Text {
-              textFormat: Text.PlainText
-              visible: text !== ""
-              width: parent.width
-              text: root.balanceDetailText(root.balance)
-              color: root.dim
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.caption
-            }
-          }
-
-          Column {
-            id: limitsSection
-            visible: root.limits.length > 0 && !root.multiAccount
-            width: parent.width
-            spacing: Style.space(10)
-
-            PanelSectionHeader {
-              text: "LIMITS"
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-            }
-
-            Repeater {
-              model: root.limits
-
-              LimitRow {
-                required property var modelData
-                width: limitsSection.width
-                window: modelData
-              }
-            }
-          }
-
-          // ---------- Accounts ----------
-          Column {
-            id: accountsSection
-            visible: root.multiAccount
-            width: parent.width
-            spacing: Style.space(16)
-
-            // Accounts are split by the panel's ordinary separators; ACTIVE
-            // marks the one new sessions use.
-            Repeater {
-              model: root.accounts
-
-              Column {
-                id: accountBlock
-                required property var modelData
-                required property int index
-                width: accountsSection.width
-                spacing: Style.space(16)
-
-                PanelSeparator {
-                  visible: accountBlock.index > 0
-                  foreground: root.foreground
-                }
-
-                Column {
-                  id: accountBody
-                  width: parent.width
-                  spacing: Style.space(8)
-
-                  AccountHeader {
-                    width: parent.width
-                    account: accountBlock.modelData
-                    picked: accountBlock.index === root.accountCursor
-                  }
-
-                  Repeater {
-                    model: root.limitWindows({ limits: accountBlock.modelData.limits || [] })
-
-                    CompactLimit {
-                      required property var modelData
-                      width: accountBody.width
-                      window: modelData
-                    }
-                  }
-                }
-              }
-            }
-          }
-
-          // ---------- Usage ----------
-          PanelSeparator {
-            visible: usageSection.visible
-            foreground: root.foreground
-          }
-
-          Column {
-            id: usageSection
-            visible: !!root.provider && root.provider.recentDays && root.provider.recentDays.length > 0
-            width: parent.width
-            spacing: Style.spacing.md
-
-            readonly property var days: root.provider ? (root.provider.recentDays || []) : []
-            readonly property real peak: Math.max(1, root.weekPeak(root.provider))
-
-            PanelSectionHeader {
-              width: parent.width
-              text: "TOKENS BY DAY"
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-            }
-
-            Repeater {
-              model: usageSection.days
-
-              DayRow {
-                required property var modelData
-                required property int index
-
-                width: usageSection.width
-                day: modelData
-                ratio: Number(modelData.messageCount || 0) / usageSection.peak
-                // By date, not by position: the Claude stats-cache fallback can
-                // hand us a window that stops short of today.
-                today: String(modelData.date || "") === root.todayDate()
-              }
-            }
-          }
-
-          // ---------- Models ----------
-          PanelSeparator {
-            visible: modelSection.visible
-            foreground: root.foreground
-          }
-
-          Column {
-            id: modelSection
-            visible: root.models.length > 0
-            width: parent.width
-            spacing: Style.spacing.md
-
-            PanelSectionHeader {
-              width: parent.width
-              text: "TOKENS BY MODEL"
-              foreground: root.foreground
-              fontFamily: root.fontFamily
-            }
-
-            Repeater {
-              model: root.models
-
-              ModelRow {
-                required property var modelData
-                width: modelSection.width
-                row: modelData
-                // Scaled to the heaviest model, so the top row is always full —
-                // the same scale-to-peak the weekly chart uses for its busiest day.
-                share: modelData.total / Math.max(1, root.models[0].total)
-              }
+            ProviderSection {
+              required property var modelData
+              width: column.width
+              provider: modelData
             }
           }
 
@@ -820,13 +550,167 @@ Panel {
     }
   }
 
-  // A provider's mark as a switch: full strength when selected, dimmed
-  // otherwise, brighter on hover. Falls back to the bar glyph without a mark.
-  component ProviderMark: Item {
-    id: mark
-    signal clicked()
+  // One provider: its mark, name, and plan, then its limits — or, with
+  // several accounts, each account's name, state, and limits in turn. A
+  // prepaid provider shows its balance instead.
+  component ProviderSection: Column {
+    id: section
     property var provider: null
-    property bool selected: false
+    readonly property var accounts: root.providerAccounts(provider)
+    readonly property bool multi: accounts.length > 1
+    readonly property var windows: root.limitWindows(provider)
+    readonly property var balance: provider ? (provider.balance || null) : null
+    spacing: Style.space(12)
+
+    PanelSeparator { foreground: root.foreground }
+
+    Item {
+      width: parent.width
+      implicitHeight: Math.max(sectionMark.height, sectionName.implicitHeight)
+
+      ProviderIcon {
+        id: sectionMark
+        anchors.left: parent.left
+        anchors.verticalCenter: parent.verticalCenter
+        provider: section.provider
+      }
+
+      Text {
+        id: sectionName
+        anchors.left: sectionMark.right
+        anchors.leftMargin: Style.space(10)
+        anchors.verticalCenter: parent.verticalCenter
+        text: section.provider ? section.provider.providerName : ""
+        color: root.foreground
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.body
+        font.bold: true
+      }
+
+      Text {
+        anchors.right: parent.right
+        anchors.verticalCenter: parent.verticalCenter
+        visible: !section.multi
+        text: root.planLabel(section.provider)
+        color: root.dim
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.caption
+      }
+    }
+
+    // Sign-in and endpoint trouble for a single-account provider; with
+    // several, each account says so on its own line.
+    Text {
+      visible: !section.multi && !!section.provider && String(section.provider.usageStatusText || "") !== ""
+      width: parent.width
+      text: section.provider ? String(section.provider.authHelpText || "") : ""
+      color: root.urgent
+      font.family: root.fontFamily
+      font.pixelSize: Style.font.caption
+      wrapMode: Text.WordWrap
+    }
+
+    Repeater {
+      model: section.multi ? [] : section.windows
+
+      CompactLimit {
+        required property var modelData
+        width: section.width
+        window: modelData
+      }
+    }
+
+    // The meter shows what is left, not what is used: a prepaid account
+    // drains toward empty rather than filling toward a cap.
+    Column {
+      visible: !!section.balance
+      width: parent.width
+      spacing: Style.space(6)
+
+      Item {
+        width: parent.width
+        implicitHeight: balanceTitle.implicitHeight
+
+        Text {
+          id: balanceTitle
+          textFormat: Text.PlainText
+          width: parent.width * 0.3
+          anchors.verticalCenter: parent.verticalCenter
+          text: "Balance"
+          color: root.foreground
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+        }
+
+        Meter {
+          anchors.left: balanceTitle.right
+          anchors.right: balanceValue.left
+          anchors.rightMargin: Style.spacing.md
+          anchors.verticalCenter: parent.verticalCenter
+          value: section.balance && section.balance.funded > 0 ? section.balance.remaining / section.balance.funded : -1
+          alarming: root.balanceAlarming(section.balance)
+        }
+
+        Text {
+          id: balanceValue
+          textFormat: Text.PlainText
+          width: Style.space(96)
+          anchors.right: parent.right
+          anchors.verticalCenter: parent.verticalCenter
+          horizontalAlignment: Text.AlignRight
+          text: section.balance ? root.formatMoney(section.balance.remaining, section.balance.currency) : ""
+          color: root.balanceAlarming(section.balance) ? root.urgent : root.dim
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+        }
+      }
+
+      Text {
+        textFormat: Text.PlainText
+        visible: text !== ""
+        width: parent.width
+        text: root.balanceDetailText(section.balance)
+        color: root.dim
+        font.family: root.fontFamily
+        font.pixelSize: Style.font.caption
+      }
+    }
+
+    Repeater {
+      model: section.multi ? section.accounts : []
+
+      Column {
+        id: accountBlock
+        required property var modelData
+        required property int index
+        width: section.width
+        topPadding: index > 0 ? Style.space(6) : 0
+        spacing: Style.space(8)
+
+        AccountHeader {
+          width: parent.width
+          account: accountBlock.modelData
+          owner: section.provider
+          picked: root.isPicked(section.provider, accountBlock.modelData)
+        }
+
+        Repeater {
+          model: root.limitWindows({ limits: accountBlock.modelData.limits || [] })
+
+          CompactLimit {
+            required property var modelData
+            width: accountBlock.width
+            window: modelData
+          }
+        }
+      }
+    }
+  }
+
+  // A provider's mark, falling back to the bar glyph when it ships none.
+  component ProviderIcon: Item {
+    id: mark
+    property var provider: null
     property var candidates: root.iconCandidatesForProvider(provider, root.surface)
     property string candidatesKey: candidates.join("\n")
     property int candidateIndex: 0
@@ -834,7 +718,6 @@ Panel {
 
     width: Style.font.heading
     height: Style.font.heading
-    opacity: selected ? 1.0 : (markMouse.containsMouse ? 0.8 : 0.35)
 
     Image {
       id: markImage
@@ -843,6 +726,8 @@ Panel {
       sourceSize.width: Style.font.heading * 2
       sourceSize.height: Style.font.heading * 2
       fillMode: Image.PreserveAspectFit
+      // Advancing source from inside its own status change trips the
+      // binding-loop detector; defer the step one tick.
       onStatusChanged: if (status === Image.Error && mark.candidateIndex < mark.candidates.length)
         Qt.callLater(function() { mark.candidateIndex++ })
     }
@@ -854,20 +739,6 @@ Panel {
       color: root.foreground
       font.family: root.fontFamily
       font.pixelSize: Style.font.heading
-    }
-
-    MouseArea {
-      id: markMouse
-      anchors.fill: parent
-      anchors.margins: -Style.space(4)
-      hoverEnabled: true
-      cursorShape: Qt.PointingHandCursor
-      onClicked: mark.clicked()
-    }
-
-    PanelToolTip {
-      visible: markMouse.containsMouse
-      text: mark.provider ? mark.provider.providerName : ""
     }
   }
 
@@ -908,11 +779,13 @@ Panel {
   component AccountHeader: Item {
     id: head
     property var account: ({})
+    property var owner: null
     property bool picked: false
     property bool editing: false
     // The new name shows at once; the record catches up a moment later.
     property string renamedTo: ""
     readonly property bool isActive: account.active === true
+    readonly property bool autoOn: root.autoSwitchFor(owner)
     readonly property string label: renamedTo !== "" ? renamedTo : String(account.label || account.id || "")
 
     onAccountChanged: renamedTo = ""
@@ -932,7 +805,7 @@ Panel {
       root.focusKeys()
       if (save && value !== "" && value !== label) {
         renamedTo = value
-        root.renameAccount(account, value)
+        root.renameAccount(owner, account, value)
       }
     }
 
@@ -1027,19 +900,19 @@ Panel {
         HoverHandler { id: useHover }
 
         TextLink {
-          visible: root.autoSwitch || useHover.hovered || head.picked
+          visible: head.autoOn || useHover.hovered || head.picked
           text: "Autoswitch"
-          current: root.autoSwitch
-          tooltip: root.autoSwitch
+          current: head.autoOn
+          tooltip: head.autoOn
             ? "Stop switching automatically"
-            : "Switch here automatically at " + root.switchThreshold(root.provider) + "%"
-          onClicked: root.setSwitchMode(root.autoSwitch ? "manual" : "auto")
+            : "Switch here automatically at " + root.switchThreshold(head.owner) + "%"
+          onClicked: root.setSwitchMode(head.owner, head.autoOn ? "manual" : "auto")
         }
 
         TextLink {
           text: head.picked ? "Use ⏎" : "Use"
           picked: head.picked
-          onClicked: root.useAccount(head.account)
+          onClicked: root.useAccount(head.owner, head.account)
         }
       }
     }
@@ -1089,70 +962,6 @@ Panel {
     }
   }
 
-  // A limit window: label and percentage, meter, and reset countdown.
-  component LimitRow: Column {
-    id: limitRow
-    property var window: null
-
-    readonly property bool alarming: window && window.percent >= 0.9
-
-    spacing: Style.space(6)
-
-    Item {
-      width: parent.width
-      implicitHeight: Math.max(limitLabel.implicitHeight, limitValue.implicitHeight)
-
-      Text {
-        id: limitLabel
-        textFormat: Text.PlainText
-        // A model-scoped window is titled after its model, and those names run
-        // long enough to reach the percentage, so the title gives way first.
-        text: limitRow.window ? limitRow.window.title : ""
-        color: root.foreground
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.body
-        elide: Text.ElideRight
-        anchors.left: parent.left
-        anchors.right: limitValue.left
-        anchors.rightMargin: Style.spacing.sm
-        anchors.verticalCenter: parent.verticalCenter
-      }
-
-      Text {
-        id: limitValue
-        textFormat: Text.PlainText
-        text: limitRow.window && limitRow.window.percent >= 0
-          ? Math.round(limitRow.window.percent * 100) + "%"
-          : "—"
-        color: limitRow.alarming ? root.urgent : root.foreground
-        font.family: root.fontFamily
-        font.pixelSize: Style.font.caption
-        anchors.right: parent.right
-        anchors.verticalCenter: parent.verticalCenter
-      }
-    }
-
-    Meter {
-      width: parent.width
-      value: limitRow.window ? limitRow.window.percent : -1
-      alarming: limitRow.alarming
-    }
-
-    Text {
-      id: resetText
-      textFormat: Text.PlainText
-      visible: text !== ""
-      width: parent.width
-      text: {
-        var remainingMs = root.resetMsFor(limitRow.window)
-        return remainingMs > 0 ? "Resets in " + root.formatDuration(remainingMs) : ""
-      }
-      color: root.dim
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.caption
-    }
-  }
-
   // Rounded track showing the percentage of the allowance used.
   component Meter: Item {
     id: meter
@@ -1180,153 +989,6 @@ Panel {
       Behavior on width {
         NumberAnimation { duration: Style.duration(160); easing.type: Easing.OutCubic }
       }
-    }
-
-  }
-
-  // One row per day: label, bar, tokens. Today is picked out in full
-  // foreground so the week reads as a run-up to right now.
-  component DayRow: Item {
-    id: dayRow
-    property var day: null
-    property real ratio: 0
-    property bool today: false
-
-    implicitHeight: Math.max(dayLabel.implicitHeight, dayValue.implicitHeight) + Style.spacing.sm
-
-    Text {
-      id: dayLabel
-      textFormat: Text.PlainText
-      text: root.dayLabel(dayRow.day ? dayRow.day.date : "", dayRow.today)
-      color: dayRow.today ? root.foreground : root.dim
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.caption
-      font.bold: dayRow.today
-      anchors.left: parent.left
-      anchors.verticalCenter: parent.verticalCenter
-      width: Style.space(52)
-    }
-
-    Rectangle {
-      id: dayTrack
-      anchors.left: dayLabel.right
-      anchors.right: dayValue.left
-      anchors.leftMargin: Style.space(8)
-      anchors.rightMargin: Style.space(10)
-      anchors.verticalCenter: parent.verticalCenter
-      height: Math.max(Style.space(4), Math.round(Style.spacing.controlHeight * 0.14))
-      radius: height / 2
-      color: root.track
-
-      Rectangle {
-        anchors.left: parent.left
-        anchors.verticalCenter: parent.verticalCenter
-        height: parent.height
-        radius: parent.radius
-        width: parent.width * root.clamp(dayRow.ratio, 0, 1)
-        color: dayRow.today ? root.foreground : root.alpha(root.foreground, 0.55)
-
-        Behavior on width {
-          NumberAnimation { duration: Style.duration(160); easing.type: Easing.OutCubic }
-        }
-      }
-    }
-
-    Text {
-      id: dayValue
-      textFormat: Text.PlainText
-      text: usage.formatTokenCount(dayRow.day ? Number(dayRow.day.messageCount || 0) : 0)
-      color: dayRow.today ? root.foreground : root.dim
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.caption
-      font.bold: true
-      horizontalAlignment: Text.AlignRight
-      anchors.right: parent.right
-      anchors.verticalCenter: parent.verticalCenter
-      width: Style.space(52)
-    }
-
-    MouseArea {
-      id: dayHover
-      anchors.fill: parent
-      hoverEnabled: true
-      acceptedButtons: Qt.NoButton
-    }
-
-    PanelToolTip {
-      visible: dayHover.containsMouse
-      text: root.dayTooltip(dayRow.day, dayRow.today)
-      fontFamily: root.fontFamily
-    }
-  }
-
-  // Model rows read as a table: the share bar fills the row behind the label
-  // instead of stacking under it, which keeps the whole dashboard on one screen.
-  component ModelRow: Item {
-    id: modelRow
-    property var row: null
-    property real share: 0
-
-    implicitHeight: modelName.implicitHeight + Style.spacing.lg
-
-    Rectangle {
-      anchors.fill: parent
-      radius: Style.cornerRadius
-      color: root.alpha(root.foreground, 0.05)
-    }
-
-    Rectangle {
-      anchors.left: parent.left
-      anchors.top: parent.top
-      anchors.bottom: parent.bottom
-      width: parent.width * root.clamp(modelRow.share, 0, 1)
-      radius: Style.cornerRadius
-      color: root.alpha(root.foreground, 0.14)
-
-      Behavior on width {
-        NumberAnimation { duration: Style.duration(160); easing.type: Easing.OutCubic }
-      }
-    }
-
-    Text {
-      id: modelName
-      textFormat: Text.PlainText
-      text: modelRow.row ? modelRow.row.name : ""
-      color: root.foreground
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.bodySmall
-      elide: Text.ElideRight
-      anchors.left: parent.left
-      anchors.leftMargin: Style.space(8)
-      anchors.right: modelTokens.left
-      anchors.rightMargin: Style.space(8)
-      anchors.verticalCenter: parent.verticalCenter
-    }
-
-    Text {
-      id: modelTokens
-      textFormat: Text.PlainText
-      text: modelRow.row ? usage.formatTokenCount(modelRow.row.total) : ""
-      color: root.dim
-      font.family: root.fontFamily
-      font.pixelSize: Style.font.bodySmall
-      font.bold: true
-      anchors.right: parent.right
-      anchors.rightMargin: Style.space(8)
-      anchors.verticalCenter: parent.verticalCenter
-    }
-
-    MouseArea {
-      id: modelHover
-      anchors.fill: parent
-      hoverEnabled: true
-      acceptedButtons: Qt.NoButton
-    }
-
-    PanelToolTip {
-      visible: modelHover.containsMouse
-      text: root.modelTooltip(modelRow.row)
-      fontFamily: root.fontFamily
     }
   }
 }
