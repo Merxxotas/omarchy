@@ -109,6 +109,15 @@ cleanup() {
 trap cleanup EXIT
 trap 'pkill -TERM -P $$; exit 130' TERM INT
 
+# Bash holds a trap until a foreground command finishes, and a login waits on
+# the browser for as long as it takes. Running it in the background behind a
+# `wait` lets Cancel stop it at once. It keeps this script's stdin, where the
+# panel sends a pasted code.
+interruptible() {
+  "$@" <&0 &
+  wait $!
+}
+
 if omarchy-cmd-missing "$provider"; then
   say "Installing the $name CLI…"
   if [[ $events == "true" ]]; then
@@ -127,12 +136,15 @@ private_browser() {
   chmod +x "$browser"
 }
 
+case "$provider" in
+claude) login_command=(claude auth login) ;;
+codex) login_command=(codex login) ;;
+grok) login_command=(grok login) ;;
+esac
+
+# The CLI's own home, whatever this shell has pointed it at.
 login() {
-  case "$provider" in
-  claude) claude auth login ;;
-  codex) codex login ;;
-  grok) grok login ;;
-  esac
+  interruptible env -u CLAUDE_CONFIG_DIR -u CODEX_HOME -u GROK_HOME "${login_command[@]}"
 }
 
 # Signing an account that's already here in again, where it lives: the
@@ -148,14 +160,14 @@ if [[ -n $reauth ]]; then
 
   if [[ $account_home == "$HOME/.$provider" ]]; then
     say "Sign in to $name again in the browser window that opens."
-    (unset CLAUDE_CONFIG_DIR CODEX_HOME GROK_HOME; login) || fail "The $name sign-in didn't finish."
+    login || fail "The $name sign-in didn't finish."
   else
     say "Sign in again as this account in the private window that opens."
     private_browser
     if [[ $provider == "claude" ]]; then
-      BROWSER="$browser" CLAUDE_CONFIG_DIR="$account_home" claude auth login || fail "The $name sign-in didn't finish."
+      interruptible env BROWSER="$browser" CLAUDE_CONFIG_DIR="$account_home" claude auth login || fail "The $name sign-in didn't finish."
     else
-      BROWSER="$browser" CODEX_HOME="$account_home" codex login || fail "The $name sign-in didn't finish."
+      interruptible env BROWSER="$browser" CODEX_HOME="$account_home" codex login || fail "The $name sign-in didn't finish."
     fi
   fi
 
@@ -168,7 +180,7 @@ fi
 # normal browser: nothing is signed in there yet that it could be mistaken for.
 if ! primary_signed_in "$provider"; then
   say "Sign in to $name in the browser window that opens."
-  if (unset CLAUDE_CONFIG_DIR CODEX_HOME GROK_HOME; login) && primary_signed_in "$provider"; then
+  if login && primary_signed_in "$provider"; then
     # The first agent signed in on a machine with none chosen becomes the
     # default, so `omarchy agent` and the panel's starter prompts have one to
     # run. A default someone already picked is never touched.
@@ -206,9 +218,9 @@ EOF
   private_browser
 
   if [[ $provider == "claude" ]]; then
-    BROWSER="$browser" CLAUDE_CONFIG_DIR="$home" claude auth login
+    interruptible env BROWSER="$browser" CLAUDE_CONFIG_DIR="$home" claude auth login
   else
-    BROWSER="$browser" CODEX_HOME="$home" codex login
+    interruptible env BROWSER="$browser" CODEX_HOME="$home" codex login
   fi
 
   if account=$(omarchy-agent-account-state register "$provider" "$label" "$home" 2>&1); then

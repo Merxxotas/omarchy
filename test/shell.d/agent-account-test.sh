@@ -25,6 +25,10 @@ cat >"$mock_bin/claude" <<'SH'
 #!/bin/bash
 if [[ ${1:-} == "auth" && ${2:-} == "login" ]]; then
   "${BROWSER:-omarchy-test-default-browser}" "https://claude.com/oauth/authorize"
+  if [[ -n ${OMARCHY_TEST_LOGIN_HANGS:-} ]]; then
+    echo $$ >"$OMARCHY_TEST_LOGIN_HANGS"
+    exec sleep 30
+  fi
   [[ -n ${OMARCHY_TEST_LOGIN_UUID:-} ]] || exit 1
   home=${CLAUDE_CONFIG_DIR:-$HOME/.claude}
   account_file="$home/.claude.json"
@@ -298,3 +302,37 @@ if omarchy-agent-account-add --reauth nobody claude </dev/null >/dev/null 2>&1; 
   fail "--reauth of an unknown account fails"
 fi
 pass "--reauth signs an existing account in again where it lives"
+
+# ------------------------------------------------------------------- cancel
+
+# Cancelling from the panel stops a login that's waiting on the browser, right
+# away, and leaves no half-made account behind.
+OMARCHY_TEST_LOGIN_HANGS="$test_tmp/login.pid" omarchy-agent-account-add --events claude Slow </dev/null >/dev/null 2>&1 &
+adding=$!
+sleep 1
+started=$(date +%s)
+kill -TERM "$adding"
+wait "$adding" || true
+(( $(date +%s) - started < 3 )) || fail "cancelling stops a waiting login at once"
+login_pid=$(cat "$test_tmp/login.pid")
+for _ in {1..20}; do
+  kill -0 "$login_pid" 2>/dev/null || break
+  sleep 0.1
+done
+if kill -0 "$login_pid" 2>/dev/null; then
+  kill "$login_pid"
+  fail "cancelling stops the login itself"
+fi
+[[ -z $(ls -A "$accounts/claude/.pending") ]] || fail "cancelling leaves no half-made account"
+pass "cancelling a sign-in stops the login and cleans up"
+
+# ------------------------------------------------------------------ one account
+
+# With one account, the usage record keeps its limits at the top level, and
+# the list still shows them.
+solo="$test_tmp/solo"
+mkdir -p "$solo/omarchy/agents/usage"
+echo '{"id":"claude","limits":[{"label":"Session (5-hour)","percent":0.4,"resetsAt":""}]}' >"$solo/omarchy/agents/usage/claude.json"
+[[ $(XDG_STATE_HOME="$solo" omarchy-agent-account-list claude --json | jq -c '.[0].accounts[0].limits[0].percent') == "0.4" ]] ||
+  fail "a single account's limits are listed from the record's top level"
+pass "a single account's limits are listed"

@@ -22,7 +22,8 @@ done
 usage_dir="${XDG_STATE_HOME:-$HOME/.local/state}/omarchy/agents/usage"
 accounts=$(omarchy-agent-account-state list $provider) || exit 1
 
-# Join each account with the limits its provider's usage record last saw.
+# Join each account with the limits its provider's usage record last saw. With
+# a single account the collectors keep its limits at the record's top level.
 accounts=$(jq -c --arg dir "$usage_dir" '
   map(. as $p | .accounts |= map(. + {limits: []}))' <<<"$accounts")
 for p in claude codex; do
@@ -30,7 +31,14 @@ for p in claude codex; do
   [[ -f $record ]] || continue
   accounts=$(jq -c --arg p "$p" --slurpfile record "$record" '
     map(if .provider == $p then
-      .accounts |= map(. as $a | . + {limits: ([$record[0].accounts[]? | select(.id == $a.id) | .limits] | first // [])})
+      .accounts |= map(. as $a | . + {limits: (
+        if ($record[0].accounts // []) | length > 0 then
+          [$record[0].accounts[] | select(.id == $a.id) | .limits] | first // []
+        elif $a.primary then
+          $record[0].limits // []
+        else
+          []
+        end)})
     else . end)' <<<"$accounts")
 done
 
