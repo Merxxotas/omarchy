@@ -18,7 +18,9 @@ Every subscription on one page, limits first.
   Codex, or Grok subscription.
 - **One section per agent** — its mark, name, and plan, then a compact line
   per limit window: its meter, the percentage used, and the time until it
-  resets. Sign-in and endpoint trouble shows under the name in the urgent
+  resets. A model-scoped allowance on the same clock (Claude's Fable weekly
+  limit) is a tick on that window's meter rather than a line of its own; the
+  row's tooltip names it. Sign-in and endpoint trouble shows under the name in the urgent
   color.
 - **Accounts** — an agent with more than one subscription account (see
   `omarchy agent account`) lists each: name, email, plan, and its own limit
