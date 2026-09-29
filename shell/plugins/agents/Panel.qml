@@ -774,7 +774,7 @@ Panel {
             spacing: Style.space(12)
 
             PanelSectionHeader {
-              text: "MAKE SOMETHING"
+              text: "MAKE SOMETHING COOL"
               foreground: root.foreground
               fontFamily: root.fontFamily
             }
@@ -1258,25 +1258,25 @@ Panel {
     signal clicked()
     property string glyph: ""
     property string title: ""
-    implicitHeight: tileBody.implicitHeight + Style.space(32)
+    implicitHeight: tileBody.implicitHeight + Style.space(20)
     radius: Style.cornerRadius
     color: tileMouse.containsMouse ? root.alpha(Color.accent, 0.14) : root.alpha(root.foreground, 0.05)
 
-    Column {
+    Row {
       id: tileBody
       anchors.centerIn: parent
       spacing: Style.space(8)
 
       Text {
-        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.verticalCenter: parent.verticalCenter
         text: tile.glyph
         color: Color.accent
         font.family: root.fontFamily
-        font.pixelSize: Style.font.display
+        font.pixelSize: Style.font.heading
       }
 
       Text {
-        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.verticalCenter: parent.verticalCenter
         text: tile.title
         color: tileMouse.containsMouse ? Color.accent : root.foreground
         font.family: root.fontFamily

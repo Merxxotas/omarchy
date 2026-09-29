@@ -30,7 +30,7 @@ Every subscription on one page, limits first.
 - **Balance** — prepaid agents show a credit ledger instead of limits: a
   fuel-gauge meter that drains toward empty, the remaining credit, and
   funded-versus-spent detail.
-- **Make something** — starter prompts (a new theme, plugin, or app) that
+- **Make something cool** — starter prompts (a new theme, plugin, or app) that
   start the default agent on the task through `omarchy agent prompt`.
 - **Adding a subscription** — the + in the hero's corner (or `a`) swaps
   the list for Claude, Codex, and Grok, each saying whether adding
