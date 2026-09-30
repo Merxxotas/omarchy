@@ -203,7 +203,6 @@ const expectedAgents = {
   claude: { icon: '󰛄', label: 'Claude' },
   codex: { icon: '\ue905', iconFont: 'omarchy', label: 'Codex' },
   grok: { icon: '\ue904', iconFont: 'omarchy', label: 'Grok' },
-  agy: { icon: '󰫢', label: 'Antigravity' },
   hermes: { icon: '\ue90a', iconFont: 'omarchy', label: 'Hermes' },
   openclaw: { icon: '\ue90c', iconFont: 'omarchy', label: 'OpenClaw' },
   copilot: { icon: '', label: 'Copilot' },
